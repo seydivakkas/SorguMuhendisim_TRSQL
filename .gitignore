@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Model weights & large artifacts (see models/README.md)
+*.gguf
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.ckpt
+models/**/weights/
+
+# Datasets (licenses! see datasets/README.md)
+datasets/raw/
+datasets/external/
+*.sqlite
+*.db
+!tests/fixtures/*.sql
+
+# Experiment outputs
+experiments/runs/
+benchmarks/results/
+audit*.jsonl
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
