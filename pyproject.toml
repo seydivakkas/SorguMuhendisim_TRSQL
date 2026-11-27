@@ -25,6 +25,7 @@ backend = ["boundaries.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 markers = [
   "security: security gate tests (must never be skipped)",
