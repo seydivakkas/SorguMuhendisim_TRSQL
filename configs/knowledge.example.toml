@@ -1,0 +1,53 @@
+# Example enterprise knowledge. These are EXAMPLES — real definitions must be set and
+# approved by the institution. Unapproved rules (approved = false) never reach a prompt.
+
+[[rules]]
+rule_id = "R-001"
+term = "aktif müşteri"
+definition = "Son 90 günde alışveriş yapan müşteri"
+sql_fragment = "customers.last_purchase_date >= CURRENT_DATE - INTERVAL '90 days'"
+source = "örnek"
+approved = false
+
+[[rules]]
+rule_id = "R-002"
+term = "net satış"
+definition = "Satış tutarı − iade tutarı"
+source = "örnek"
+approved = false
+
+[[rules]]
+rule_id = "R-003"
+term = "başarılı bayi"
+definition = "Hedefinin en az %100'üne ulaşan bayi"
+source = "örnek"
+approved = false
+
+[[rules]]
+rule_id = "R-004"
+term = "kârlılık"
+definition = "Gelir − maliyet"
+source = "örnek"
+approved = false
+
+[[rules]]
+rule_id = "R-005"
+term = "geçerli sipariş"
+definition = "İptal edilmemiş sipariş"
+sql_fragment = "sales.status <> 'cancelled'"
+source = "örnek"
+approved = false
+
+[[metrics]]
+metric_id = "net_sales"
+name = "net satış"
+synonyms = ["satış", "ciro"]
+expression = "SUM(sales.total_amount - sales.return_amount)"
+base_table = "sales"
+filters = ["sales.status <> 'cancelled'"]
+version = 1
+
+[[examples]]
+question = "Trabzon'daki bayiler hangileri?"
+sql = "SELECT name FROM dealers WHERE city = 'Trabzon'"
+dialect = "sqlite"

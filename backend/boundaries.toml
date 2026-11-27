@@ -1,0 +1,57 @@
+# Module boundary contract of the TRSQL modular monolith (ADR-0001).
+#
+# [modules]: for each module, the OTHER backend modules it may import.
+#   `core` is the shared kernel and is always allowed; it may import nothing.
+#   Cross-module imports must target the module's public API
+#   (`from backend.rag import X`), never internals (`backend.rag.retriever`).
+#
+# [external]: third-party / stdlib packages that only the listed modules
+#   may import. Everything not listed here is unrestricted.
+#
+# Checked by tools/check_boundaries.py (run in CI and in tests/architecture).
+# Changing this file requires an ADR or an ADR amendment.
+
+[modules]
+core                = []
+api                 = ["auth", "orchestration", "observability"]
+auth                = []
+orchestration       = [
+  "auth", "turkish_nlp", "schema_intelligence", "schema_linking", "knowledge_base",
+  "rag", "semantic_layer", "query_planner", "prompt_engine", "model_engine",
+  "sql_generator", "sql_validator", "policy_engine", "execution_engine",
+  "database_adapters", "result_engine", "observability",
+]
+turkish_nlp         = []
+schema_intelligence = []
+schema_linking      = ["schema_intelligence"]
+knowledge_base      = []
+rag                 = ["knowledge_base"]
+semantic_layer      = ["knowledge_base"]
+query_planner       = []
+prompt_engine       = []
+model_engine        = []   # a model NEVER reaches the database (ADR-0004)
+sql_generator       = []   # receives a ModelAdapter via the core port
+sql_validator       = []
+policy_engine       = []
+execution_engine    = []   # receives a DatabaseAdapter via the core port
+database_adapters   = []
+result_engine       = []
+observability       = []
+
+[external]
+sqlite3     = ["database_adapters"]
+psycopg     = ["database_adapters"]
+psycopg2    = ["database_adapters"]
+asyncpg     = ["database_adapters"]
+sqlalchemy  = ["database_adapters"]
+fastapi     = ["api"]
+starlette   = ["api"]
+uvicorn     = ["api"]
+llama_cpp   = ["model_engine"]
+onnxruntime = ["model_engine"]
+torch       = ["model_engine"]
+transformers = ["model_engine"]
+sqlglot     = ["sql_validator", "policy_engine"]
+requests    = []   # offline-first (ADR-0002): no HTTP clients in backend
+httpx       = []
+urllib3     = []
