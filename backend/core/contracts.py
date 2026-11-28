@@ -76,10 +76,29 @@ class TableInfo(Contract):
     columns: tuple[ColumnInfo, ...]
     foreign_keys: tuple[ForeignKey, ...] = ()
     description: str | None = None
+    schema_name: str | None = None
 
     def column(self, name: str) -> ColumnInfo | None:
         lowered = name.lower()
         return next((c for c in self.columns if c.name.lower() == lowered), None)
+
+    @property
+    def resolved_schema(self) -> str | None:
+        if self.schema_name:
+            return self.schema_name.lower()
+        if "." in self.name:
+            return self.name.split(".", 1)[0].lower()
+        return None
+
+    @property
+    def unqualified_name(self) -> str:
+        return self.name.rsplit(".", 1)[-1].lower()
+
+    @property
+    def qualified_name(self) -> str:
+        schema = self.resolved_schema
+        base = self.unqualified_name
+        return f"{schema}.{base}" if schema else base
 
 
 class SchemaSnapshot(Contract):
@@ -88,7 +107,18 @@ class SchemaSnapshot(Contract):
 
     def table(self, name: str) -> TableInfo | None:
         lowered = name.lower()
-        return next((t for t in self.tables if t.name.lower() == lowered), None)
+        exact = next((t for t in self.tables if t.name.lower() == lowered), None)
+        if exact is not None:
+            return exact
+        return next((t for t in self.tables if t.qualified_name == lowered), None)
+
+    def tables_for_name(self, name: str) -> tuple[TableInfo, ...]:
+        lowered = name.lower()
+        return tuple(
+            t
+            for t in self.tables
+            if t.unqualified_name == lowered or t.qualified_name == lowered or t.name.lower() == lowered
+        )
 
     @property
     def table_names(self) -> frozenset[str]:

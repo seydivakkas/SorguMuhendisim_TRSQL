@@ -355,3 +355,109 @@ def test_runner_end_to_end_with_fake_model_and_breakdowns(
 
     # Also ensure MentionKind enum is imported cleanly in test module
     assert MentionKind.ENTITY.value == "entity"
+
+
+def test_runner_postgres_dialect_builds_postgres_adapter_and_hides_dsn(
+    tmp_path: Path,
+    knowledge: InMemoryKnowledgeBase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.core.contracts import (
+        ApprovedQuery,
+        ColumnInfo,
+        ExecutionResult,
+        SchemaSnapshot,
+        TableInfo,
+    )
+
+    pg_dsn_sample = "postgresql://nl2sql_reader:SecretPassPG88@pg.internal:5432/trsql"
+    monkeypatch.setenv("TRSQL_PG_DSN", pg_dsn_sample)
+
+    ds_path = tmp_path / "pg_enterprise.jsonl"
+    ds_path.write_text(
+        json.dumps(
+            {
+                "id": "pg1",
+                "question": "Trabzon'daki bayiler hangileri?",
+                "gold_sql": "SELECT name FROM dealers WHERE city = 'Trabzon'",
+                "db_id": "demo",
+                "category": "normal",
+                "difficulty": "easy",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out_dir = tmp_path / "pg_out"
+    cfg = tmp_path / "pg_config.toml"
+    cfg.write_text(
+        f"""
+[experiment]
+name = "smoke-pg-d1"
+stage = "D1"
+dataset = "enterprise"
+dataset_path = "{ds_path.as_posix()}"
+allow_dirty = true
+output_dir = "{out_dir.as_posix()}"
+
+[database]
+dialect = "postgres"
+dsn_env = "TRSQL_PG_DSN"
+allowed_schemas = ["public", "sales"]
+
+[auth]
+user_id = "u-analyst"
+tenant_id = "t-demo"
+allowed_tables = ["dealers", "sales"]
+
+[settings.model]
+adapter = "fake"
+""",
+        encoding="utf-8",
+    )
+
+    captured_init: list[dict[str, object]] = []
+
+    class _MockPGAdapter:
+        def __init__(self, dsn_env: str = "TRSQL_PG_DSN", **kwargs: object) -> None:
+            captured_init.append({"dsn_env": dsn_env, **kwargs})
+
+        @property
+        def dialect(self) -> Dialect:
+            return Dialect.POSTGRES
+
+        def introspect(self) -> SchemaSnapshot:
+            return SchemaSnapshot(
+                dialect=Dialect.POSTGRES,
+                tables=(
+                    TableInfo(
+                        name="dealers",
+                        columns=(
+                            ColumnInfo(name="dealer_id", data_type="integer", is_primary_key=True),
+                            ColumnInfo(name="name", data_type="text"),
+                            ColumnInfo(name="city", data_type="text"),
+                        ),
+                    ),
+                ),
+            )
+
+        def execute(self, query: ApprovedQuery) -> ExecutionResult:
+            return ExecutionResult(columns=("name",), rows=(("Karadeniz Ticaret",),), elapsed_ms=1.5)
+
+    model = FakeModelAdapter(["SELECT name FROM dealers WHERE city = 'Trabzon'"], model_id="fake-pg")
+    with patch("benchmarks.runner.PostgresAdapter", _MockPGAdapter):
+        metrics = run_config_file(cfg, model=model, knowledge=knowledge, output_dir=out_dir)
+
+    assert len(captured_init) == 1
+    assert captured_init[0]["dsn_env"] == "TRSQL_PG_DSN"
+    assert captured_init[0]["allowed_schemas"] == ("public", "sales")
+    assert metrics["summary"]["execution_accuracy"] == pytest.approx(1.0)
+
+    metrics_text = (out_dir / "metrics.json").read_text(encoding="utf-8")
+    preds_text = (out_dir / "predictions.jsonl").read_text(encoding="utf-8")
+    assert "SecretPassPG88" not in metrics_text
+    assert "pg.internal" not in metrics_text
+    assert "SecretPassPG88" not in preds_text
+    assert "pg.internal" not in preds_text

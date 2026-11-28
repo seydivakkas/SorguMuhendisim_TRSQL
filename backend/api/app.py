@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Collection, Mapping
+from typing import Protocol
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -13,12 +15,17 @@ from backend.api.rate_limit import (
     check_connection_ownership,
     validate_request_size,
 )
-from backend.auth import StaticAuthProvider
-from backend.core.config import AuthSettings
+from backend.auth import load_auth_provider
+from backend.core.config import AuthSettings, load_settings
 from backend.core.contracts import AuthContext, PipelineOutcome, QueryRequest
 from backend.core.errors import AuthorizationError
 from backend.observability import MetricsCollector
-from backend.orchestration import Pipeline, PlanPreview
+from backend.orchestration import Pipeline, PlanPreview, build_pipeline_from_env
+
+
+class AuthProvider(Protocol):
+    def authenticate(self, token: str | None) -> AuthContext: ...
+
 
 _AUTH_FAILURES_PER_MINUTE = 10
 
@@ -39,7 +46,7 @@ def _extract_bearer_token(authorization: str | None) -> str | None:
 
 def create_app(
     pipeline: Pipeline,
-    auth_provider: StaticAuthProvider,
+    auth_provider: AuthProvider,
     *,
     auth_settings: AuthSettings | None = None,
     rate_limiter: RateLimiter | None = None,
@@ -149,3 +156,20 @@ def create_app(
         return pipeline.run(request, auth)
 
     return app
+
+
+def create_default_app() -> FastAPI:
+    """Zero-argument FastAPI factory wired from TOML configs and environment variables."""
+    config_path = os.environ.get("TRSQL_CONFIG", "").strip() or "configs/default.toml"
+    settings = load_settings(config_path)
+    metrics = MetricsCollector()
+    pipeline = build_pipeline_from_env(settings, metrics=metrics)
+    tokens_path = os.environ.get("TRSQL_TOKENS_FILE", "").strip() or None
+    policies_dir = os.environ.get("TRSQL_POLICIES_DIR", "").strip() or None
+    auth_provider = load_auth_provider(tokens_path=tokens_path, policies_dir=policies_dir)
+    return create_app(
+        pipeline,
+        auth_provider,
+        auth_settings=settings.auth,
+        metrics=metrics,
+    )

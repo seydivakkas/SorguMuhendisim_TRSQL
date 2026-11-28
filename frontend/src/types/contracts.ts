@@ -47,6 +47,26 @@ export interface PipelineOutcome {
   readonly reason: string | null;
 }
 
+export interface JoinStep {
+  readonly from_table: string;
+  readonly from_column: string;
+  readonly to_table: string;
+  readonly to_column: string;
+}
+
+export interface PlanPreview {
+  readonly request_id: string;
+  readonly status: OutcomeStatus;
+  readonly intent: string;
+  readonly tables: readonly string[];
+  readonly columns: readonly string[];
+  readonly join_path: readonly JoinStep[];
+  readonly metrics: readonly string[];
+  readonly rules: readonly string[];
+  readonly clarification: string | null;
+  readonly template_matched: string | null;
+}
+
 export interface QueryBody {
   readonly question: string;
   readonly connection_id: string;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from typing import cast
 
@@ -16,6 +17,7 @@ from backend.core.contracts import (
     SchemaSnapshot,
     Severity,
     SQLCandidate,
+    TableInfo,
     ValidationReport,
 )
 from backend.sql_validator.business_rules import BusinessRuleSpec, validate_business_rules
@@ -245,6 +247,7 @@ class SQLValidator:
     ) -> tuple[CheckResult, CheckResult]:
         allowed = {t.lower() for t in auth.allowed_tables}
         denied_cols = {c.lower() for c in auth.denied_columns}
+        base_counts = Counter(t.unqualified_name for t in schema.tables)
         cte_names = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
 
         def schema_fail(message: str) -> tuple[CheckResult, CheckResult]:
@@ -253,9 +256,31 @@ class SQLValidator:
         def auth_fail(message: str) -> tuple[CheckResult, CheckResult]:
             return _ok(CheckName.SCHEMA), _fail(CheckName.AUTHORIZATION, Severity.SECURITY, message)
 
-        alias_to_table: dict[str, str] = {}
+        def _is_table_allowed(tbl: TableInfo) -> bool:
+            raw = tbl.name.lower()
+            if tbl.qualified_name in allowed:
+                return True
+            if "." in raw and raw in allowed:
+                return True
+            return base_counts[tbl.unqualified_name] == 1 and tbl.unqualified_name in allowed
+
+        def _is_col_denied(tbl: TableInfo, cname: str) -> bool:
+            return (
+                cname in denied_cols
+                or f"{tbl.unqualified_name}.{cname}" in denied_cols
+                or f"{tbl.name.lower()}.{cname}" in denied_cols
+                or f"{tbl.qualified_name}.{cname}" in denied_cols
+            )
+
+        def _table_has_denied_col(tbl: TableInfo) -> bool:
+            if any(_is_col_denied(tbl, c.name.lower()) for c in tbl.columns):
+                return True
+            prefixes = {tbl.unqualified_name, tbl.name.lower(), tbl.qualified_name}
+            return any(d.rsplit(".", 1)[0] in prefixes for d in denied_cols if "." in d)
+
+        alias_to_table: dict[str, TableInfo] = {}
         tvf_aliases: set[str] = set()
-        real_tables: set[str] = set()
+        real_tables: dict[str, TableInfo] = {}
         for table in tree.find_all(exp.Table):
             if not isinstance(table.this, (exp.Identifier, str)) and not table.name:
                 if table.alias:
@@ -274,37 +299,51 @@ class SQLValidator:
                 or name in _SYSTEM_SCHEMAS
             ):
                 return auth_fail("Sistem kataloğuna erişim yasak.")
-            # Resolve the schema qualifier: ``hr.dealers`` must not be treated as ``dealers``.
-            key: str | None
-            if catalog:
-                key = None
-            elif qualifier and schema.table(f"{qualifier}.{name}") is not None:
-                key = f"{qualifier}.{name}"
-            elif not qualifier or qualifier in _DEFAULT_SCHEMAS:
-                key = name
-            else:
-                key = None
-            if key is None or schema.table(key) is None:
-                return schema_fail(f"Tablo bulunamadı: {name}")
-            if key not in allowed:
-                return auth_fail("Yetkisiz veri erişimi.")
-            real_tables.add(key)
-            alias_to_table[table.alias_or_name.lower()] = key
 
-        def denied_in(tables: set[str]) -> bool:
-            return any(c.rsplit(".", 1)[0] in tables for c in denied_cols)
+            resolved_tbl: TableInfo | None = None
+            if catalog:
+                resolved_tbl = None
+            elif qualifier:
+                qname = f"{qualifier}.{name}"
+                resolved_tbl = next(
+                    (t for t in schema.tables if t.qualified_name == qname or t.name.lower() == qname),
+                    None,
+                )
+                if resolved_tbl is None and qualifier in _DEFAULT_SCHEMAS and base_counts[name] == 1:
+                    resolved_tbl = next(
+                        (
+                            t
+                            for t in schema.tables
+                            if t.unqualified_name == name
+                            and (t.resolved_schema is None or t.resolved_schema == qualifier)
+                        ),
+                        None,
+                    )
+            else:
+                matches = [t for t in schema.tables if t.unqualified_name == name]
+                if len(matches) > 1:
+                    return auth_fail("Çok şemalı ortamda niteliksiz tablo erişimi reddedildi.")
+                if len(matches) == 1:
+                    resolved_tbl = matches[0]
+
+            if resolved_tbl is None:
+                return schema_fail(f"Tablo bulunamadı: {name}")
+            if not _is_table_allowed(resolved_tbl):
+                return auth_fail("Yetkisiz veri erişimi.")
+            real_tables[resolved_tbl.qualified_name] = resolved_tbl
+            alias_to_table[table.alias_or_name.lower()] = resolved_tbl
 
         # A projected ``*`` / ``t.*`` would expose denied columns. ``COUNT(*)`` does not.
         for star in tree.find_all(exp.Star):
             parent_col = star.parent if isinstance(star.parent, exp.Column) else None
             if parent_col is None and isinstance(star.parent, exp.Func):
                 continue
-            scope = (
-                {alias_to_table.get(parent_col.table.lower(), "")}
-                if parent_col and parent_col.table
-                else real_tables
-            )
-            if denied_in(scope):
+            if parent_col and parent_col.table:
+                target_tbl = alias_to_table.get(parent_col.table.lower())
+                scope_tbls = [target_tbl] if target_tbl is not None else []
+            else:
+                scope_tbls = list(real_tables.values())
+            if any(_table_has_denied_col(t) for t in scope_tbls):
                 return auth_fail("Yetkisiz sütun erişimi (*).")
 
         # Names that legitimately resolve to something other than a base-table column.
@@ -325,22 +364,22 @@ class SQLValidator:
             qualifier = col.table.lower() if col.table else ""
             if qualifier:
                 # Real-table aliases win: a CTE named like an alias must not hide ``x.secret``.
-                tname = alias_to_table.get(qualifier)
-                if tname is None:
+                tbl_info = alias_to_table.get(qualifier)
+                if tbl_info is None:
                     if qualifier in cte_names or qualifier in tvf_aliases or qualifier in subquery_aliases:
                         continue
                     return schema_fail(f"Bilinmeyen tablo takma adı: {qualifier}")
-                candidates = {tname}
+                candidates = [tbl_info]
             else:
-                candidates = real_tables
-            if any(f"{t}.{cname}" in denied_cols for t in candidates):
+                candidates = list(real_tables.values())
+            if any(_is_col_denied(t, cname) for t in candidates):
                 return auth_fail("Yetkisiz sütun erişimi.")
-            exists = any((info := schema.table(t)) is not None and info.column(cname) for t in candidates)
+            exists = any(t.column(cname) is not None for t in candidates)
             if exists:
                 continue
             # PostgreSQL whole-row reference (``SELECT d``, ``row_to_json(d)``, ``(d).col``)
             # exposes every column of the table, including denied ones.
-            if not qualifier and cname in alias_to_table and denied_in({alias_to_table[cname]}):
+            if not qualifier and cname in alias_to_table and _table_has_denied_col(alias_to_table[cname]):
                 return auth_fail("Yetkisiz sütun erişimi.")
             if not qualifier and (cname in derived_names or tvf_aliases):
                 continue

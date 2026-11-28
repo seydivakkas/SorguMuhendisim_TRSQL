@@ -1,3 +1,4 @@
+import type { PlanPreview } from "../types/contracts";
 import {
   extractTablesFromSqlPreview,
   inferInformationalTableHints,
@@ -8,6 +9,9 @@ interface PreflightProps {
   readonly question: string;
   readonly connectionId: string;
   readonly isLoading: boolean;
+  readonly planPreview: PlanPreview | null;
+  readonly isPlanLoading: boolean;
+  readonly planError: string | null;
   readonly onApprove: () => void;
   readonly onCancel: () => void;
 }
@@ -25,7 +29,9 @@ type HitlTableConfirmationProps = PreflightProps | ReportConfirmationProps;
 
 export function HitlTableConfirmation(props: HitlTableConfirmationProps) {
   if (props.mode === "preflight") {
-    const hints = inferInformationalTableHints(props.question);
+    const showFallbackHints = !props.isPlanLoading && props.planPreview === null;
+    const hints = showFallbackHints ? inferInformationalTableHints(props.question) : [];
+
     return (
       <section
         className="banner hitl"
@@ -40,31 +46,75 @@ export function HitlTableConfirmation(props: HitlTableConfirmationProps) {
         </div>
 
         <p className="muted-note" style={{ margin: 0 }}>
-          Sorgu sunucuya gönderilmeden önce hedef bağlantı ve olası alan tabloları aşağıda
-          özetlenmiştir. Nihai şema kapsamlama, RBAC ve 8 aşamalı SQL doğrulaması{" "}
+          Nihai şema kapsamlama, RBAC ve 8 aşamalı SQL doğrulaması{" "}
           <strong>yalnızca sunucuda</strong> yapılır.
         </p>
 
-        <div className="table-chips" aria-label="Tahmini domain tabloları">
-          {hints.length > 0 ? (
-            hints.map((hint) => (
-              <span key={hint} className="badge info">
-                {hint}
+        {props.isPlanLoading && (
+          <p className="muted-note" style={{ margin: 0 }}>
+            Sunucu planı (/v1/plan) hesaplanıyor…
+          </p>
+        )}
+
+        {props.planError && (
+          <div className="banner error" role="alert" style={{ padding: "0.5rem 0.75rem" }}>
+            <strong>Plan önizleme hatası:</strong> {props.planError}
+          </div>
+        )}
+
+        {props.planPreview !== null && (
+          <div className="table-chips" aria-label="Sunucu planı tablo ve sütunları">
+            {props.planPreview.tables.length > 0 ? (
+              props.planPreview.tables.map((tbl) => (
+                <span key={`tbl-${tbl}`} className="badge info">
+                  Tablo: {tbl}
+                </span>
+              ))
+            ) : (
+              <span className="badge">Sunucu planında eşleşen tablo bulunamadı</span>
+            )}
+            {props.planPreview.columns.map((col) => (
+              <span key={`col-${col}`} className="badge">
+                Sütun: {col}
               </span>
-            ))
-          ) : (
-            <span className="badge">
-              Tablo eşleştirmesi sunucu L3 katmanında belirlenecek
-            </span>
-          )}
-        </div>
+            ))}
+            {props.planPreview.metrics.map((metric) => (
+              <span key={`met-${metric}`} className="badge ok">
+                Metrik: {metric}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {props.planPreview?.clarification && (
+          <p className="muted-note" style={{ margin: 0 }}>
+            <strong>Sunucu netleştirme notu:</strong> {props.planPreview.clarification}
+          </p>
+        )}
+
+        {showFallbackHints && (
+          <div className="table-chips" aria-label="Bilgi amaçlı istemci tablo ipuçları">
+            <span className="badge warn">Bilgi amaçlı (plan alınamadı):</span>
+            {hints.length > 0 ? (
+              hints.map((hint) => (
+                <span key={hint} className="badge info">
+                  {hint}
+                </span>
+              ))
+            ) : (
+              <span className="badge">
+                Tablo eşleştirmesi sunucu L3 katmanında belirlenecek
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="input-row">
           <button
             type="button"
             className="btn btn-primary btn-sm"
             onClick={props.onApprove}
-            disabled={props.isLoading}
+            disabled={props.isLoading || props.isPlanLoading}
           >
             {props.isLoading ? "Gönderiliyor…" : "Tablo Kapsamını Onayla ve Çalıştır"}
           </button>

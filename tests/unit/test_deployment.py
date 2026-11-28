@@ -148,6 +148,7 @@ def test_dockerfile_and_install_scripts_present_and_consistent() -> None:
     assert "FROM python:3.12-slim AS builder" in dockerfile
     assert "FROM python:3.12-slim AS runtime" in dockerfile
     assert 'HF_HUB_OFFLINE="1"' in dockerfile
+    assert 'TRSQL_ASGI_APP="backend.api.app:create_default_app"' in dockerfile
     assert "verify_models.py" in dockerfile
 
     ps1 = (DEPLOYMENT_DIR / "install.ps1").read_text(encoding="utf-8")

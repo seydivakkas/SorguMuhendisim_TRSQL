@@ -308,8 +308,54 @@ def valid_efficiency_score(
 
 ves = valid_efficiency_score
 
+
+def execute_postgres_readonly(
+    adapter: object,
+    sql: str,
+    *,
+    schema: object | None = None,
+    timeout_ms: int = 5000,
+    max_rows: int = 10_000,
+) -> tuple[bool, tuple[tuple[Any, ...], ...], str | None]:
+    """Execute gold SQL read-only via :class:`PostgresAdapter` (no direct psycopg import).
+
+    The candidate query passes through :class:`SQLValidator` and
+    :class:`PolicyEngine` so it enters the adapter solely as an
+    :class:`ApprovedQuery` enforcing ``SET TRANSACTION READ ONLY``,
+    ``statement_timeout``, and ``search_path``.
+    """
+    from backend.core.config import ExecutionSettings, ValidationSettings
+    from backend.core.contracts import AuthContext, Dialect, SchemaSnapshot, SQLCandidate
+    from backend.core.errors import TRSQLError
+    from backend.core.ports import DatabaseAdapter
+    from backend.policy_engine import PolicyEngine
+    from backend.sql_validator import SQLValidator
+
+    db: DatabaseAdapter = adapter  # type: ignore[assignment]
+    snap = schema if isinstance(schema, SchemaSnapshot) else db.introspect()
+    auth = AuthContext(
+        user_id="gold-eval",
+        tenant_id="benchmark",
+        allowed_tables=snap.table_names,
+        denied_columns=frozenset(),
+        max_rows=max_rows,
+    )
+    candidate = SQLCandidate(sql=sql, dialect=Dialect.POSTGRES, model_id="gold", attempt=1)
+    validator = SQLValidator(ValidationSettings(max_explain_rows=max_rows))
+    report = validator.validate(candidate, snap, auth)
+    try:
+        approved = PolicyEngine(ExecutionSettings(timeout_ms=timeout_ms, max_rows=max_rows)).approve(
+            report, auth
+        )
+        result = db.execute(approved)
+        return True, result.rows, None
+    except TRSQLError as exc:
+        return False, (), str(exc)
+
+
 __all__ = [
     "ExecutionComparison",
+    "execute_postgres_readonly",
     "execution_accuracy",
     "has_top_level_order_by",
     "normalize_rows",

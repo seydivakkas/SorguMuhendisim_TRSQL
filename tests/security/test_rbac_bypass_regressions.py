@@ -149,3 +149,149 @@ def test_policy_binds_identity_to_approved_query(
     report = V.validate(candidate("SELECT name FROM dealers"), schema, analyst)
     approved = PolicyEngine().approve(report, analyst)
     assert approved.auth == analyst
+
+
+def test_policy_loader_denies_tables_absent_from_policy_file(
+    schema: SchemaSnapshot, candidate: Callable[[str], SQLCandidate]
+) -> None:
+    from pathlib import Path
+
+    from backend.auth import load_role_policies, scope_schema
+
+    policies = load_role_policies(Path("security_policies"), include_examples=True)
+    ctx = policies["analyst"].to_auth_context(user_id="u-policy", tenant_id="t-demo")
+    scoped = scope_schema(schema, ctx)
+    assert {t.name for t in scoped.tables} == {"dealers", "sales"}
+
+    # Tables absent from analyst policy (`salaries`) must not be visible and must fail closed.
+    report = V.validate(candidate("SELECT amount FROM salaries"), schema, ctx)
+    assert report.verdict is Verdict.REJECTED
+
+    # Default PII columns must always be blocked even if omitted from the TOML file.
+    for pii_col in ("tc_kimlik_no", "telefon", "eposta", "iban"):
+        assert f"dealers.{pii_col}" in ctx.denied_columns
+
+
+def _multi_schema_snapshot() -> SchemaSnapshot:
+    from backend.core.contracts import ColumnInfo, ForeignKey, TableInfo
+
+    return SchemaSnapshot(
+        dialect=Dialect.POSTGRES,
+        tables=(
+            TableInfo(
+                name="musteri",
+                schema_name="public",
+                columns=(
+                    ColumnInfo(name="id", data_type="integer", is_primary_key=True),
+                    ColumnInfo(name="ad", data_type="text"),
+                    ColumnInfo(name="maas", data_type="numeric"),
+                    ColumnInfo(name="tc_kimlik_no", data_type="text"),
+                ),
+            ),
+            TableInfo(
+                name="hr.musteri",
+                schema_name="hr",
+                columns=(
+                    ColumnInfo(name="id", data_type="integer", is_primary_key=True),
+                    ColumnInfo(name="ad", data_type="text"),
+                    ColumnInfo(name="maas", data_type="numeric"),
+                    ColumnInfo(name="sicil_no", data_type="text"),
+                ),
+                foreign_keys=(ForeignKey(column="id", ref_table="musteri", ref_column="id"),),
+            ),
+        ),
+    )
+
+
+def test_multischema_unqualified_allowlist_fails_closed() -> None:
+    from backend.auth import scope_schema
+
+    snap = _multi_schema_snapshot()
+    auth = AuthContext(
+        user_id="u-pg",
+        tenant_id="t-demo",
+        allowed_tables=frozenset({"musteri"}),
+        denied_columns=frozenset({"public.musteri.maas"}),
+    )
+    scoped = scope_schema(snap, auth)
+    assert scoped.tables == ()
+
+    for sql in (
+        "SELECT ad FROM musteri",
+        "SELECT ad FROM public.musteri",
+        "SELECT ad FROM hr.musteri",
+        'SELECT ad FROM "Public"."Musteri"',
+    ):
+        cand = SQLCandidate(sql=sql, dialect=Dialect.POSTGRES, model_id="x", attempt=1)
+        assert V.validate(cand, snap, auth).verdict is Verdict.REJECTED, sql
+
+
+def test_multischema_quoted_case_and_search_path_and_column_levels() -> None:
+    from backend.auth import scope_schema
+
+    snap = _multi_schema_snapshot()
+    auth = AuthContext(
+        user_id="u-pg",
+        tenant_id="t-demo",
+        allowed_tables=frozenset({"public.musteri", "hr.musteri"}),
+        denied_columns=frozenset({"public.musteri.maas", "tc_kimlik_no"}),
+    )
+    scoped = scope_schema(snap, auth)
+    assert len(scoped.tables) == 2
+    pub_tbl = next(t for t in scoped.tables if t.resolved_schema == "public")
+    hr_tbl = next(t for t in scoped.tables if t.resolved_schema == "hr")
+    assert {c.name for c in pub_tbl.columns} == {"id", "ad"}
+    assert {c.name for c in hr_tbl.columns} == {"id", "ad", "maas", "sicil_no"}
+
+    must_reject = [
+        # Quoted mixed case schema/table/column must still obey RBAC
+        'SELECT ad FROM "Public"."Musteri" m JOIN "Public"."Musteri" m2 ON m.id = m2.id WHERE m."Maas" > 0',
+        'SELECT "Maas" FROM "Public"."Musteri"',
+        'SELECT "TC_Kimlik_No" FROM "Public"."Musteri"',
+        'SELECT m.* FROM "Public"."Musteri" m',
+        # Unqualified access relies on search_path when two schemas share the table name
+        "SELECT ad FROM musteri",
+        # Qualified denied column on public.musteri
+        "SELECT m.maas FROM public.musteri m",
+        # Unqualified column joined across both schemas
+        "SELECT maas FROM public.musteri m JOIN hr.musteri h ON m.id = h.id",
+    ]
+    for sql in must_reject:
+        cand = SQLCandidate(sql=sql, dialect=Dialect.POSTGRES, model_id="x", attempt=1)
+        assert V.validate(cand, snap, auth).verdict is Verdict.REJECTED, sql
+
+    # Same-named column in hr.musteri is permitted when only public.musteri.maas is denied
+    allowed_cand = SQLCandidate(
+        sql="SELECT h.maas FROM hr.musteri h",
+        dialect=Dialect.POSTGRES,
+        model_id="x",
+        attempt=1,
+    )
+    assert V.validate(allowed_cand, snap, auth).verdict is Verdict.APPROVED
+
+    # Only public.musteri allowed -> hr.musteri must be REJECTED
+    pub_only = AuthContext(
+        user_id="u-pg-pub",
+        tenant_id="t-demo",
+        allowed_tables=frozenset({"public.musteri"}),
+        denied_columns=frozenset({"public.musteri.maas"}),
+    )
+    assert len(scope_schema(snap, pub_only).tables) == 1
+    assert (
+        V.validate(
+            SQLCandidate(
+                sql="SELECT sicil_no FROM hr.musteri", dialect=Dialect.POSTGRES, model_id="x", attempt=1
+            ),
+            snap,
+            pub_only,
+        ).verdict
+        is Verdict.REJECTED
+    )
+    assert (
+        V.validate(
+            SQLCandidate(sql="SELECT ad FROM musteri", dialect=Dialect.POSTGRES, model_id="x", attempt=1),
+            snap,
+            pub_only,
+        ).verdict
+        is Verdict.REJECTED
+    )

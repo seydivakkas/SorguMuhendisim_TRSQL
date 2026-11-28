@@ -42,7 +42,20 @@ pytest                                   # G5
 | Değişken | Açıklama |
 |---|---|
 | `TRSQL_MODEL_PATH` | Yerel GGUF model dosyası |
+| `TRSQL_EMBEDDING_MODEL_PATH` | Yerel gömme (BGE-M3) GGUF dosyası |
+| `TRSQL_DB_DIALECT` | `sqlite` veya `postgres` |
+| `TRSQL_SQLITE_PATH` | Yerel SQLite veritabanı yolu |
 | `TRSQL_PG_DSN` | Salt okunur PostgreSQL bağlantısı (AR-07) |
+| `TRSQL_TOKENS_FILE` | SHA-256 özetli token dosyası (`T-02`) |
+
+### API'yi yerel olarak çalıştırma (duman testi)
+
+```powershell
+$env:TRSQL_DB_DIALECT="sqlite"
+$env:TRSQL_SQLITE_PATH="demo.sqlite"
+$env:TRSQL_MODEL_ADAPTER="fake"
+uvicorn backend.api.app:create_default_app --factory --port 8000
+```
 
 ## Bir aşamayı değiştirmek
 

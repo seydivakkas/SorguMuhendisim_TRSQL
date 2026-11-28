@@ -319,11 +319,13 @@ class PostgresAdapter:
             fk_rows = cur.fetchall()
 
             cols_by_table: dict[str, list[ColumnInfo]] = {}
+            schema_by_table: dict[str, str] = {}
             for schema_name, tbl_name, col_name, data_type, is_nullable, is_pk in col_rows:
                 sname = str(schema_name)
                 if sname.lower() in _FORBIDDEN_SCHEMAS or sname.lower().startswith("pg_"):
                     continue
                 key = self._format_table_name(sname, str(tbl_name))
+                schema_by_table.setdefault(key, sname.lower())
                 nullable = (
                     str(is_nullable).upper() == "YES" if isinstance(is_nullable, str) else bool(is_nullable)
                 )
@@ -355,6 +357,7 @@ class PostgresAdapter:
             tables = tuple(
                 TableInfo(
                     name=tname,
+                    schema_name=schema_by_table[tname],
                     columns=tuple(cols),
                     foreign_keys=tuple(fks_by_table.get(tname, ())),
                 )
