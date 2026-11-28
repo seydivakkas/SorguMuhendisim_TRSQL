@@ -65,6 +65,7 @@ class PolicyEngine:
             report=report,
             max_rows=cap,
             timeout_ms=self._settings.timeout_ms,
+            auth=auth,
         )
 
     @staticmethod

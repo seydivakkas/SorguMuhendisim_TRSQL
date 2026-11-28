@@ -249,6 +249,10 @@ class PostgresAdapter:
         cur.execute(f"SET LOCAL statement_timeout = {safe_stmt_ms}")
         cur.execute(f"SET LOCAL lock_timeout = {self._lock_timeout_ms}")
         cur.execute(f"SET LOCAL idle_in_transaction_session_timeout = {self._idle_in_tx_timeout_ms}")
+        # Pin name resolution to the allowed schemas so an unqualified table can never
+        # resolve to a shadowing table in another schema (e.g. ``"$user"``).
+        search_path = ", ".join('"' + name.replace('"', '""') + '"' for name in self._allowed_schemas)
+        cur.execute("SELECT set_config('search_path', %s, true)", (search_path,))
         # Parameterized set_config avoids interpolating user/tenant strings into SET LOCAL SQL.
         if user_id:
             cur.execute("SELECT set_config('app.user_id', %s, true)", (user_id,))
@@ -376,8 +380,11 @@ class PostgresAdapter:
         if query.dialect is not Dialect.POSTGRES:
             raise ExecutionError("Sorgu diyalekti PostgreSQL değil")
 
-        eff_user = auth.user_id if auth is not None else self._user_id
-        eff_tenant = auth.tenant_id if auth is not None else self._tenant_id
+        # RLS context: explicit argument, else the identity the query was approved for,
+        # else the identity this adapter was bound to with :meth:`with_auth`.
+        identity = auth if auth is not None else query.auth
+        eff_user = identity.user_id if identity is not None else self._user_id
+        eff_tenant = identity.tenant_id if identity is not None else self._tenant_id
 
         conn = self._connect()
         started = time.perf_counter()

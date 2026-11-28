@@ -238,3 +238,19 @@ def test_execute_explain_cost_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter_cart = PostgresAdapter(check_explain=True, connect_fn=lambda _dsn: cart_conn)
     with pytest.raises(ExecutionError, match="kartezyen"):
         adapter_cart.execute(_approved_pg("SELECT * FROM dealers d JOIN sales s ON 1=1"))
+
+
+def test_execute_uses_identity_bound_to_approved_query_for_rls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pipeline never calls ``with_auth``; RLS context must come from the ApprovedQuery."""
+    monkeypatch.setenv("TRSQL_PG_DSN", "postgresql://reader@localhost/db")
+    cur = _FakeCursor(query_rows=[(1, "A")], query_cols=("dealer_id", "name"))
+    conn = _FakeConnection(cur)
+    auth = AuthContext(user_id="u-7", tenant_id="tenant-7", allowed_tables=frozenset({"dealers"}))
+    query = _approved_pg("SELECT dealer_id, name FROM dealers").model_copy(update={"auth": auth})
+
+    PostgresAdapter(connect_fn=lambda _dsn: conn, allowed_schemas=("public", "sales")).execute(query)
+
+    executed = cur.executed
+    assert ("SELECT set_config('app.user_id', %s, true)", ("u-7",)) in executed
+    assert ("SELECT set_config('app.tenant_id', %s, true)", ("tenant-7",)) in executed
+    assert ("SELECT set_config('search_path', %s, true)", ('"public", "sales"',)) in executed

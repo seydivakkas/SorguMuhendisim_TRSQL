@@ -28,7 +28,7 @@ sözleşmeleridir. Arayüzler (port) `backend/core/ports.py` içindedir.
 | L5 | `PromptBundle` | ModelAdapter | `template_id` (sürüm), `system`, `user` |
 | L5 | `SQLCandidate` | L6 | `sql`, `dialect`, `model_id`, `attempt`, `latency_ms` — **güvenilmeyen girdi** |
 | L6 | `ValidationReport` (`CheckResult`) | orchestration, policy | `checks[]`, türetilmiş `verdict` |
-| L6 | `ApprovedQuery` | L7 | onaysız rapordan **oluşturulamaz**; `max_rows`, `timeout_ms` |
+| L6 | `ApprovedQuery` | L7 | onaysız rapordan **oluşturulamaz**; `max_rows`, `timeout_ms`, `auth` (onaylanan kimlik: SQLite yetkilendirici izin listesi ve PostgreSQL RLS bağlamı için) |
 | L7 | `ExecutionResult` | L8 | `columns`, `rows`, `truncated`, `elapsed_ms` |
 | L8 | `ResultReport` (`ChartSpec`) | L0 | `summary` (Türkçe), `chart`, `sql`, `metrics_used` |
 | — | `PipelineOutcome` | L0 | `status`, `attempts`, `report` / `clarification` / `reason` |

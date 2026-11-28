@@ -335,6 +335,9 @@ class ApprovedQuery(Contract):
     report: ValidationReport
     max_rows: int = Field(gt=0)
     timeout_ms: int = Field(gt=0)
+    # Identity the query was approved for. Adapters use it for database-level
+    # defense in depth (SQLite authorizer allow-list, PostgreSQL RLS context).
+    auth: AuthContext | None = None
 
     @model_validator(mode="after")
     def _must_be_approved(self) -> ApprovedQuery:
