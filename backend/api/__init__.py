@@ -5,7 +5,9 @@ dependency (``pip install -e .[api]``) so the core pipeline can be tested
 without a web server.
 """
 
-from backend.api.app import QueryBody, create_app
+from __future__ import annotations
+
+from backend.api.app import QueryBody, create_app, create_default_app
 from backend.api.mcp_server import TRSQLMCPServer
 from backend.api.rate_limit import (
     RateLimiter,
@@ -23,5 +25,6 @@ __all__ = [
     "TRSQLMCPServer",
     "check_connection_ownership",
     "create_app",
+    "create_default_app",
     "validate_request_size",
 ]

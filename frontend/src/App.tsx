@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchHealth, submitQuery, TrsqlApiError } from "./api/client";
+import { fetchHealth, previewPlan, submitQuery, TrsqlApiError } from "./api/client";
 import { ClarificationPanel } from "./components/ClarificationPanel";
 import { Header, type HealthState } from "./components/Header";
 import { HistorySidebar } from "./components/HistorySidebar";
@@ -13,6 +13,7 @@ import {
   OutcomeStatus,
   type ConnectionOption,
   type PipelineOutcome,
+  type PlanPreview,
   type QueryHistoryEntry,
 } from "./types/contracts";
 
@@ -46,6 +47,9 @@ export function App() {
   const [pendingPreflightQuestion, setPendingPreflightQuestion] = useState<
     string | null
   >(null);
+  const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null);
+  const [isPlanLoading, setIsPlanLoading] = useState<boolean>(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [outcome, setOutcome] = useState<PipelineOutcome | null>(null);
@@ -91,6 +95,8 @@ export function App() {
       setIsLoading(true);
       setClientError(null);
       setPendingPreflightQuestion(null);
+      setPlanPreview(null);
+      setPlanError(null);
       setActiveQuestion(cleaned);
 
       try {
@@ -128,14 +134,39 @@ export function App() {
     [apiBaseUrl, connectionId, token],
   );
 
+  const loadPlanPreflight = useCallback(
+    async (queryText: string) => {
+      setClientError(null);
+      setPendingPreflightQuestion(queryText);
+      setPlanPreview(null);
+      setPlanError(null);
+      setIsPlanLoading(true);
+      try {
+        const plan = await previewPlan(apiBaseUrl, token, {
+          question: queryText,
+          connection_id: connectionId.trim() || "demo",
+        });
+        setPlanPreview(plan);
+      } catch (err) {
+        setPlanError(
+          err instanceof TrsqlApiError
+            ? err.message
+            : "Plan önizlemesi alınırken beklenmeyen bir hata oluştu.",
+        );
+      } finally {
+        setIsPlanLoading(false);
+      }
+    },
+    [apiBaseUrl, connectionId, token],
+  );
+
   const handleQuerySubmit = () => {
     const cleaned = question.trim();
     if (!cleaned) {
       return;
     }
     if (hitlEnabled) {
-      setClientError(null);
-      setPendingPreflightQuestion(cleaned);
+      void loadPlanPreflight(cleaned);
     } else {
       void executeQuery(cleaned);
     }
@@ -149,6 +180,8 @@ export function App() {
     setOutcome(entry.outcome);
     setClientError(null);
     setPendingPreflightQuestion(null);
+    setPlanPreview(null);
+    setPlanError(null);
   };
 
   const toggleReportConfirmed = (requestId: string) => {
@@ -191,6 +224,8 @@ export function App() {
               setQuestion(val);
               if (pendingPreflightQuestion !== null) {
                 setPendingPreflightQuestion(null);
+                setPlanPreview(null);
+                setPlanError(null);
               }
             }}
             onSubmit={handleQuerySubmit}
@@ -205,8 +240,15 @@ export function App() {
               question={pendingPreflightQuestion}
               connectionId={connectionId.trim() || "demo"}
               isLoading={isLoading}
+              planPreview={planPreview}
+              isPlanLoading={isPlanLoading}
+              planError={planError}
               onApprove={() => void executeQuery(pendingPreflightQuestion)}
-              onCancel={() => setPendingPreflightQuestion(null)}
+              onCancel={() => {
+                setPendingPreflightQuestion(null);
+                setPlanPreview(null);
+                setPlanError(null);
+              }}
             />
           )}
 

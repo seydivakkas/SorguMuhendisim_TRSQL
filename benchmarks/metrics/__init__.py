@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from benchmarks.metrics.execution import (
     ExecutionComparison,
+    execute_postgres_readonly,
     execution_accuracy,
     has_top_level_order_by,
     normalize_rows,
@@ -62,6 +63,7 @@ __all__ = [
     "compute_validity_metrics",
     "evaluate_test_suite",
     "evaluate_test_suite_case",
+    "execute_postgres_readonly",
     "execute_sqlite_readonly",
     "execution_accuracy",
     "extract_gold_tables_and_columns",

@@ -1,8 +1,10 @@
 # Example role policy — synthetic demo schema (tests/fixtures/demo_schema.sql).
+# Copy to analyst.toml to activate for local runs.
 role = "analyst"
 allowed_tables = ["dealers", "sales"]
 denied_columns = ["dealers.tax_number"]
 max_rows = 1000
+tenant = "t-demo"
 
 # PostgreSQL (AR-07): row-level security predicate per tenant
 # rls = { sales = "tenant_id = current_setting('trsql.tenant_id')" }

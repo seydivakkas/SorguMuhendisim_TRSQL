@@ -18,6 +18,7 @@ from backend.model_engine.llama_cpp import (
     LlamaCppAdapter,
     estimate_vram_mb,
     extract_thinking_and_response,
+    probe_llama_cpp_support,
     query_nvidia_smi_vram_mb,
 )
 from backend.model_engine.registry import create_embedding_adapter, create_model_adapter
@@ -31,5 +32,6 @@ __all__ = [
     "create_model_adapter",
     "estimate_vram_mb",
     "extract_thinking_and_response",
+    "probe_llama_cpp_support",
     "query_nvidia_smi_vram_mb",
 ]

@@ -52,7 +52,10 @@ TRANSFORMERS_OFFLINE=1
 POSTGRES_PASSWORD=GUCLU_RASTGELE_PAROLA
 TRSQL_PG_USER=trsql_admin
 TRSQL_PG_DB=trsql
+TRSQL_DB_DIALECT=postgres
 TRSQL_PG_DSN=postgresql://nl2sql_reader:READER_PAROLASI@postgres:5432/trsql
+TRSQL_POLICIES_DIR=/app/security_policies
+# TRSQL_TOKENS_FILE=/app/security_policies/tokens.txt
 
 TRSQL_MODEL_PATH=/app/models/hati-glint-sql-9b-q4_k_m.gguf
 TRSQL_EMBEDDING_MODEL_PATH=/app/models/bge-m3-q8_0.gguf

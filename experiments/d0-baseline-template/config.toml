@@ -42,5 +42,10 @@ max_joins = 6
 [settings.model]
 adapter = "llama_cpp"
 model_path_env = "TRSQL_MODEL_PATH"
+embedding_model_path_env = "TRSQL_EMBEDDING_MODEL_PATH"
 context_length = 4096
 vram_budget_mb = 6800
+
+# Tek bir ablasyon bayrağını geçersiz kılmak için (örn. GBNF kolu):
+# [stage_overrides]
+# grammar_constrained = true

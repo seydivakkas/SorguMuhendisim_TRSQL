@@ -3,12 +3,13 @@
 | Alan | Değer |
 |---|---|
 | **Ad / sürüm** | Qwen3-4B-Instruct-2507 (4.0B parametre) |
-| **Kaynak URL ve commit/revizyon** | `https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507` |
+| **Resmî kaynak depo** | `https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507` (safetensors, revizyon `cdbee75f17c01a7cc42f958dc650907174af0554`) |
+| **GGUF depo ve revizyon** | `https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF` · commit `a06e946bb6b655725eafa393f4a9745d460374c9` (GGUF, yükleyen: `unsloth`) |
 | **Lisans ve izin verilen kullanım** | `Apache-2.0` — ticari kullanım, ince ayar ve dağıtım serbest |
-| **Quantization / dosya** | `Q5_K_M` GGUF (`Qwen3-4B-Instruct-2507.Q5_K_M.gguf`; alternatif `Q6_K`) |
-| **Dosya SHA-256** | Doğrulanacak (`python models/download.py verify` ile sabitlenir) |
+| **Quantization / dosya** | `Q5_K_M` GGUF (`Qwen3-4B-Instruct-2507-Q5_K_M.gguf`, 2,89 GB; alternatif `unsloth` / `ggml-org` Q8_0) |
+| **Dosya SHA-256** | `5bde5e9d883622acb02bf77fe7dcbc56a8b9a9ad4be78a72ca23a532658b4ecb` (T-09 yerel doğrulama ile sabitlendi) |
 | **Bağlam uzunluğu** | Taban 262K; 8 GB referans dizüstünde 4096–16384 |
-| **Ölçülen tepe VRAM (referans dizüstü)** | Henüz F2 deneyinde ölçülmedi (8 GB altında geniş bağlamla çalışması beklenir) |
+| **Ölçülen tepe VRAM (referans dizüstü)** | `n_ctx=4096`: `+3531 MB` (toplam `4669 / 8188 MB`, `0.67 sn`) · `n_ctx=8192`: `+3841 MB` (toplam `4979 / 8188 MB`, `0.68 sn`) — `q8_0` KV cache, `flash_attn=True`, RTX 4070 Laptop GPU + `llama-cpp-python 0.4.8+cu128` |
 | **İstem şablonu (`template_id`)** | `ddl_v1` (D0), `mschema_v1` (D1) |
 | **Bilinen skorlar ve kaynağı** | Resmi kartta Spider/BIRD skoru bulunmuyor; ilk uçtan uca kontrol modeli |
 

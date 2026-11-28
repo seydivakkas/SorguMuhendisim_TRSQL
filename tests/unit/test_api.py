@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -253,3 +255,34 @@ def test_mcp_failed_auth_attempts_are_throttled() -> None:
     guess = "not-a-valid-token"
     codes = [server.handle_jsonrpc(call, token=guess)["error"]["code"] for _ in range(3)]
     assert codes == [-32001, -32001, -32029]
+
+
+def test_create_default_app_boots_from_env(
+    db_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.api import create_default_app
+    from backend.auth import hash_token
+
+    policies_dir = tmp_path / "policies"
+    policies_dir.mkdir()
+    (policies_dir / "analyst.toml").write_text(
+        'role = "analyst"\nallowed_tables = ["dealers", "sales"]\nmax_rows = 100\n',
+        encoding="utf-8",
+    )
+    tokens_file = tmp_path / "tokens.txt"
+    bearer = "trsql-smoke-bearer-01"
+    tokens_file.write_text(f"{hash_token(bearer)}:u-1:analyst:t-demo\n", encoding="utf-8")
+
+    monkeypatch.setenv("TRSQL_DB_DIALECT", "sqlite")
+    monkeypatch.setenv("TRSQL_SQLITE_PATH", str(db_path))
+    monkeypatch.setenv("TRSQL_MODEL_ADAPTER", "fake")
+    monkeypatch.setenv("TRSQL_POLICIES_DIR", str(policies_dir))
+    monkeypatch.setenv("TRSQL_TOKENS_FILE", str(tokens_file))
+
+    app = create_default_app()
+    client = TestClient(app)
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/metrics").status_code == 401
+    assert client.get("/metrics", headers={"Authorization": f"Bearer {bearer}"}).status_code == 200

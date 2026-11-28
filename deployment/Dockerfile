@@ -41,7 +41,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TRSQL_MODEL_DIR="/app/models" \
     TRSQL_AUDIT_LOG_DIR="/app/logs" \
     TRSQL_LOG_RETENTION_DAYS="180" \
-    TRSQL_ASGI_APP="backend.api.app:create_app"
+    TRSQL_ASGI_APP="backend.api.app:create_default_app"
 
 RUN groupadd --system --gid 10001 trsql \
     && useradd --system --uid 10001 --gid trsql --create-home --home-dir /app trsql \

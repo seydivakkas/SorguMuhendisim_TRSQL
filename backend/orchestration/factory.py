@@ -36,6 +36,8 @@ def build_default_pipeline(
     schema_lexicon: Mapping[str, str],
     locations: frozenset[str],
     audit_sink: AuditSink,
+    prompt_template_id: str | None = None,
+    today: Callable[[], date] | None = None,
 ) -> Pipeline:
     """Wire the baseline implementation of every stage (backward-compatible).
 
@@ -43,11 +45,13 @@ def build_default_pipeline(
     model) means passing another object that satisfies the same port.
     """
     stages = PipelineStages(
-        parser=RuleBasedTurkishParser(nlp_lexicon, locations),
+        parser=RuleBasedTurkishParser(nlp_lexicon, locations, today=today or date.today),
         linker=LexiconSchemaLinker(schema_lexicon),
         knowledge=KnowledgeAssembler(knowledge),
         planner=RuleBasedPlanner(),
-        prompts=PromptBuilder(),
+        prompts=PromptBuilder(template_id=prompt_template_id)
+        if prompt_template_id is not None
+        else PromptBuilder(),
         generator=SQLGenerator(model),
         validator=SQLValidator(settings.validation),
         policy=PolicyEngine(settings.execution),
@@ -59,6 +63,7 @@ def build_default_pipeline(
         schema=database.introspect(),
         audit=AuditLogger(audit_sink),
         retry=settings.retry,
+        today=today,
     )
 
 

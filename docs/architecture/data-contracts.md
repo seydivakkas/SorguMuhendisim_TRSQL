@@ -20,7 +20,7 @@ sözleşmeleridir. Arayüzler (port) `backend/core/ports.py` içindedir.
 |---|---|---|---|
 | L1 | `AuthContext` | tüm aşamalar | `user_id`, `tenant_id`, `roles`, `allowed_tables`, `denied_columns`, `max_rows` |
 | L1 | `QueryRequest` | orchestration | `request_id`, `question` (≤2000), `connection_id` |
-| DB | `SchemaSnapshot` (`TableInfo`, `ColumnInfo`, `ForeignKey`) | auth, L3, L5, L6 | `dialect`, `tables` |
+| DB | `SchemaSnapshot` (`TableInfo`, `ColumnInfo`, `ForeignKey`) | auth, L3, L5, L6 | `dialect`, `tables` (`TableInfo.schema_name` opsiyonel) |
 | L2 | `ParsedQuestion` (`Mention`, `TemporalExpression`) | L3, L4, L5, L8 | `intent`, `mentions`, `temporal`, `sort`, `limit`, `ambiguities` |
 | L3 | `LinkedSchema` (`SchemaLink`, `JoinStep`) | L4, L5 | `tables`, `links[score]`, `join_path` |
 | L4 | `KnowledgeContext` (`BusinessRule`, `MetricDefinition`, `FewShotExample`) | L5 | yalnız `approved=True` kurallar; metrikler sürümlü |

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Callable
 from datetime import date
@@ -113,3 +114,22 @@ def candidate() -> Callable[[str], SQLCandidate]:
         return SQLCandidate(sql=sql, dialect=dialect, model_id="test", attempt=1)
 
     return make
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Skip optional hardware/service tests unless their local env vars are set.
+
+    Security tests (``@pytest.mark.security``) are NEVER skipped (AGENTS.md §1.8).
+    """
+    has_gpu_model = bool(os.environ.get("TRSQL_MODEL_PATH", "").strip())
+    has_pg_dsn = bool(os.environ.get("TRSQL_PG_TEST_DSN", "").strip())
+    skip_gpu = pytest.mark.skip(reason="TRSQL_MODEL_PATH tanımsız; @pytest.mark.gpu atlandı.")
+    skip_pg = pytest.mark.skip(reason="TRSQL_PG_TEST_DSN tanımsız; @pytest.mark.postgres atlandı.")
+
+    for item in items:
+        if item.get_closest_marker("security") is not None:
+            continue
+        if item.get_closest_marker("gpu") is not None and not has_gpu_model:
+            item.add_marker(skip_gpu)
+        if item.get_closest_marker("postgres") is not None and not has_pg_dsn:
+            item.add_marker(skip_pg)

@@ -29,11 +29,11 @@ from backend.core.contracts import (
 )
 from backend.core.errors import ConfigError
 from backend.core.ports import DatabaseAdapter, ModelAdapter
-from backend.database_adapters import SQLiteAdapter
+from backend.database_adapters import PostgresAdapter, SQLiteAdapter
 from backend.knowledge_base import InMemoryKnowledgeBase, load_knowledge_base
 from backend.model_engine import create_model_adapter
 from backend.observability import InMemoryAuditSink, mask_sensitive
-from backend.orchestration import Pipeline, build_default_pipeline
+from backend.orchestration import Pipeline
 from benchmarks import BenchmarkExample, LoadedDataset
 from benchmarks.hardware import collect_hardware_info, get_git_commit, is_git_dirty, sample_vram_mb
 from benchmarks.loaders import load_birdturk, load_enterprise, load_turspider
@@ -48,12 +48,19 @@ from benchmarks.metrics import (
     TestSuiteCase,
     compute_validity_metrics,
     evaluate_test_suite,
+    execute_postgres_readonly,
     execute_sqlite_readonly,
     execution_accuracy,
     extract_gold_tables_and_columns,
     is_parseable_sql,
     results_match_sql,
     valid_efficiency_score,
+)
+from benchmarks.stages import (
+    apply_profile_to_settings,
+    build_pipeline_for_profile,
+    resolve_embedder_for_settings,
+    resolve_stage_profile,
 )
 
 
@@ -82,6 +89,8 @@ class ExperimentConfig(BaseModel):
     dialect: Dialect = Dialect.SQLITE
     db_path: str | None = None
     db_dir: str | None = None
+    dsn_env: str = "TRSQL_PG_DSN"
+    allowed_schemas: tuple[str, ...] = ("public",)
     test_suite_dbs: tuple[str, ...] = ()
     knowledge_path: str | None = None
 
@@ -95,6 +104,7 @@ class ExperimentConfig(BaseModel):
     nlp_lexicon: dict[str, MentionKind] = Field(default_factory=dict)
     schema_lexicon: dict[str, str] = Field(default_factory=dict)
     locations: tuple[str, ...] = ()
+    stage_overrides: dict[str, Any] = Field(default_factory=dict)
 
     settings: Settings = Settings()
 
@@ -156,6 +166,9 @@ def load_experiment_config(
     lex_sec = raw.get("lexicons", {})
     if not isinstance(lex_sec, dict):
         raise ConfigError("[lexicons] bölümü tablo olmalıdır.")
+    overrides_sec = raw.get("stage_overrides", {})
+    if not isinstance(overrides_sec, dict):
+        raise ConfigError("[stage_overrides] bölümü tablo olmalıdır.")
 
     root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[1]
     settings = _extract_settings(raw, base_dir=p.resolve().parent, repo_root=root)
@@ -185,6 +198,8 @@ def load_experiment_config(
         dialect=Dialect(str(db_sec.get("dialect", "sqlite")).lower()),
         db_path=db_sec.get("path"),
         db_dir=db_sec.get("db_dir"),
+        dsn_env=str(db_sec.get("dsn_env", "TRSQL_PG_DSN")),
+        allowed_schemas=tuple(str(s) for s in db_sec.get("allowed_schemas", ("public",))) or ("public",),
         test_suite_dbs=tuple(str(x) for x in db_sec.get("test_suite_dbs", ())),
         knowledge_path=exp_sec.get("knowledge_path") or raw.get("knowledge_path"),
         user_id=str(auth_sec.get("user_id", "eval-runner")),
@@ -196,6 +211,7 @@ def load_experiment_config(
         nlp_lexicon=nlp_lexicon,
         schema_lexicon=schema_lexicon,
         locations=tuple(str(loc) for loc in locations_raw),
+        stage_overrides=dict(overrides_sec),
         settings=settings,
     )
 
@@ -385,6 +401,9 @@ def run_benchmark(
             "Değişiklikleri commit'leyin veya allow_dirty=True geçin."
         )
 
+    profile = resolve_stage_profile(config.stage, config.stage_overrides)
+    effective_settings = apply_profile_to_settings(config.settings, profile)
+
     loaded = dataset or _load_dataset_from_config(config, base_dir=resolved_base, repo_root=resolved_repo)
     examples: Sequence[BenchmarkExample] = loaded.examples
     if config.max_examples is not None:
@@ -398,7 +417,13 @@ def run_benchmark(
     sink = audit_sink or InMemoryAuditSink()
     active_model = model
     if pipeline is None and active_model is None:
-        active_model = create_model_adapter(config.settings.model)
+        active_model = create_model_adapter(effective_settings.model)
+
+    embedder, embedder_status = (
+        (None, "custom-pipeline")
+        if pipeline is not None
+        else resolve_embedder_for_settings(effective_settings, profile)
+    )
 
     pipeline_cache: dict[str, tuple[Pipeline, DatabaseAdapter, Path | None, SchemaSnapshot]] = {}
     if pipeline is not None and database is not None:
@@ -414,19 +439,36 @@ def run_benchmark(
         if db_id in pipeline_cache:
             return pipeline_cache[db_id]
 
-        db_file = _resolve_sqlite_path(db_id, config, base_dir=resolved_base, repo_root=resolved_repo)
+        db_file = (
+            _resolve_sqlite_path(db_id, config, base_dir=resolved_base, repo_root=resolved_repo)
+            if config.dialect is Dialect.SQLITE
+            else None
+        )
         adapter: DatabaseAdapter
         if database is not None:
             adapter = database
+        elif config.dialect is Dialect.POSTGRES:
+            adapter = PostgresAdapter(
+                config.dsn_env,
+                allowed_schemas=config.allowed_schemas,
+                statement_timeout_ms=effective_settings.execution.timeout_ms,
+                max_explain_cost=effective_settings.validation.max_explain_cost,
+                max_explain_rows=effective_settings.validation.max_explain_rows,
+            )
         elif db_file is not None:
             adapter = SQLiteAdapter(db_file)
         else:
-            raise ConfigError(f"'{db_id}' için SQLite veritabanı yolu bulunamadı.")
+            raise ConfigError(f"'{db_id}' için veritabanı yolu bulunamadı.")
 
         if active_model is None:
             raise ConfigError("ModelAdapter sağlanamadı.")
-        built = build_default_pipeline(
-            settings=config.settings,
+        try:
+            snap = adapter.introspect()
+        except Exception as exc:
+            raise ConfigError("Veritabanı şeması okunamadı; bağlantı ayarlarını kontrol edin.") from exc
+        built = build_pipeline_for_profile(
+            profile,
+            settings=effective_settings,
             database=adapter,
             model=active_model,
             knowledge=kb,
@@ -434,8 +476,8 @@ def run_benchmark(
             schema_lexicon=config.schema_lexicon,
             locations=frozenset(config.locations),
             audit_sink=sink,
+            embedder=embedder,
         )
-        snap = adapter.introspect()
         entry = (built, adapter, db_file, snap)
         pipeline_cache[db_id] = entry
         return entry
@@ -452,7 +494,7 @@ def run_benchmark(
     first_schema: SchemaSnapshot | None = None
 
     for ex in examples:
-        pipe, _, db_file, schema = _get_runner_for_db(ex.db_id)
+        pipe, active_db, db_file, schema = _get_runner_for_db(ex.db_id)
         if first_schema is None:
             first_schema = schema
         auth = _build_auth(config, schema)
@@ -513,12 +555,24 @@ def run_benchmark(
             )
             gold_rows: tuple[tuple[Any, ...], ...] = ()
             gold_ms = 0.0
-            if db_file is not None:
+            if config.dialect is Dialect.SQLITE and db_file is not None:
                 g_start = time.perf_counter()
                 g_ok, gold_rows, g_err = execute_sqlite_readonly(
                     db_file,
                     ex.gold_sql,
-                    timeout_ms=config.settings.execution.timeout_ms,
+                    timeout_ms=effective_settings.execution.timeout_ms,
+                    max_rows=config.max_rows,
+                )
+                gold_ms = (time.perf_counter() - g_start) * 1000.0
+                if not g_ok:
+                    raise RuntimeError(f"Altın SQL çalıştırılamadı ({ex.example_id}): {g_err}")
+            elif config.dialect is Dialect.POSTGRES:
+                g_start = time.perf_counter()
+                g_ok, gold_rows, g_err = execute_postgres_readonly(
+                    active_db,
+                    ex.gold_sql,
+                    schema=schema,
+                    timeout_ms=effective_settings.execution.timeout_ms,
                     max_rows=config.max_rows,
                 )
                 gold_ms = (time.perf_counter() - g_start) * 1000.0
@@ -677,20 +731,27 @@ def run_benchmark(
     hw_dict = hardware_before.to_dict()
     hw_dict["peak_vram_used_mb"] = peak_vram
 
-    model_id = active_model.info.model_id if active_model is not None else config.settings.model.adapter
+    model_id = active_model.info.model_id if active_model is not None else effective_settings.model.adapter
+    warnings_list: list[str] = []
+    if embedder_status == "hash-fallback":
+        warnings_list.append("embedder: hash-fallback (DeterministicHashEmbedder)")
+
     metrics_payload: dict[str, Any] = {
         "experiment": {
             "name": config.name,
-            "stage": config.stage,
+            "stage": profile.stage,
             "model": model_id,
             "quantization": config.quantization,
             "dataset": loaded.name,
             "split": loaded.split,
             "seed": config.seed,
-            "template_id": config.template_id,
+            "template_id": profile.prompt_template_id,
             "description": config.description,
             "timestamp": (now() if now is not None else datetime.now(UTC)).isoformat(),
         },
+        "stage_profile": profile.to_dict(),
+        "embedder": embedder_status,
+        "warnings": warnings_list,
         "dataset": {
             "name": loaded.name,
             "split": loaded.split,
