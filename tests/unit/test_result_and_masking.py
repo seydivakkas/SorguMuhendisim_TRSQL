@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from backend.core.contracts import OutcomeStatus
 from backend.observability import MetricsCollector, mask_sensitive
 from backend.result_engine import format_tr_number
@@ -80,3 +82,24 @@ def test_metrics_collector_and_optional_otel_bridge() -> None:
     otel_metrics.record_outcome(OutcomeStatus.REJECTED)
     assert fake_meter.histograms["trsql.stage.latency_ms"].calls == [(4.2, {"stage": "execute"})]
     assert fake_meter.counters["trsql.outcomes.total"].calls == [(1, {"status": "rejected"})]
+
+
+@pytest.mark.parametrize(
+    ("text", "leaked"),
+    [
+        ('{"token": "abc 123"}', "abc 123"),
+        ("Authorization: Bearer opaque-token-value", "opaque-token-value"),
+        ("jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln", "eyJzdWIiOiIxIn0"),
+        ("postgresql://reader:s3cr3t@db.local/trsql", "s3cr3t"),
+        ("postgresql://reader:p@ss@db.local/trsql", "ss@db"),
+        ("şifresi: gizli123", "gizli123"),
+        ("parolası=gizli123", "gizli123"),
+        ("api_key='k k'", "k k"),
+    ],
+)
+def test_masking_secret_edge_cases(text: str, leaked: str) -> None:
+    assert leaked not in mask_sensitive(text)
+
+
+def test_masking_keeps_ordinary_words() -> None:
+    assert mask_sensitive("tokenizer çalıştı") == "tokenizer çalıştı"

@@ -22,6 +22,8 @@ from backend.core.contracts import AuthContext, OutcomeStatus, QueryRequest
 from backend.core.errors import AuthorizationError
 from backend.orchestration import Pipeline
 
+_AUTH_FAILURE_KEY = "auth-fail:mcp"
+
 _TOOL_SPECS: tuple[dict[str, Any], ...] = (
     {
         "name": "trsql_query",
@@ -73,8 +75,11 @@ class TRSQLMCPServer:
         rate_limiter: RateLimiter | None = None,
         connection_owners: Mapping[str, str | Collection[str]] | None = None,
         max_payload_bytes: int = 16_384,
+        auth_failure_limiter: RateLimiter | None = None,
     ) -> None:
         self._pipeline = pipeline
+        # Failed token checks are throttled before authentication (brute-force guard).
+        self._auth_failures = auth_failure_limiter or RateLimiter(limit_per_minute=10)
         self._auth_provider = auth_provider
         self._rate_limiter = rate_limiter
         self._connection_owners = connection_owners
@@ -98,7 +103,17 @@ class TRSQLMCPServer:
 
         raw_token = token if token is not None else arguments.get("token")
         token_str = raw_token if isinstance(raw_token, str) else None
-        resolved_auth = auth if auth is not None else self._auth_provider.authenticate(token_str)
+        if auth is not None:
+            resolved_auth = auth
+        else:
+            wait = self._auth_failures.retry_after(_AUTH_FAILURE_KEY)
+            if wait is not None:
+                raise RateLimitExceededError(retry_after_seconds=wait)
+            try:
+                resolved_auth = self._auth_provider.authenticate(token_str)
+            except AuthorizationError:
+                self._auth_failures.check(_AUTH_FAILURE_KEY)
+                raise
 
         if self._rate_limiter is not None:
             self._rate_limiter.enforce(resolved_auth)

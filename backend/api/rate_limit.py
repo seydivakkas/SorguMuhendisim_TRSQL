@@ -78,6 +78,26 @@ class RateLimiter:
             bucket.append(now)
             return True, self._limit - len(bucket)
 
+    def retry_after(self, key: str) -> int | None:
+        """Return seconds until ``key`` may proceed, or ``None`` if it is under quota.
+
+        Unlike :meth:`check`, this does not consume a slot.
+        """
+        now = self._clock()
+        cutoff = now - self._window
+        with self._lock:
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                return None
+            while bucket and bucket[0] <= cutoff:
+                bucket.popleft()
+            if not bucket:
+                del self._buckets[key]
+                return None
+            if len(bucket) < self._limit:
+                return None
+            return max(1, math.ceil((bucket[0] + self._window) - now))
+
     def check_auth(self, auth: AuthContext) -> tuple[bool, int]:
         """Apply sliding-window rate limiting per ``(tenant_id, user_id)``."""
         return self.check(self.key_for(auth))

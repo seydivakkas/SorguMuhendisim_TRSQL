@@ -215,3 +215,41 @@ def test_mcp_server_exposes_pipeline_tools_never_execute_sql(
     )
     assert sec_rpc["result"]["isError"] is True
     assert sec_rpc["result"]["structuredContent"]["status"] == "rejected"
+
+
+def test_failed_auth_attempts_are_throttled_per_client() -> None:
+    now = [0.0]
+    failures = RateLimiter(limit_per_minute=3, clock=lambda: now[0])
+    app = create_app(
+        pipeline=None,  # type: ignore[arg-type]
+        auth_provider=StaticAuthProvider({}),
+        auth_failure_limiter=failures,
+    )
+    client = TestClient(app)
+    body = {"question": "kaç bayi var", "connection_id": "demo"}
+    for _ in range(3):
+        assert (
+            client.post("/v1/query", json=body, headers={"Authorization": "Bearer guess"}).status_code == 401
+        )
+    blocked = client.post("/v1/query", json=body, headers={"Authorization": "Bearer guess"})
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) >= 1
+    now[0] += 61.0
+    assert client.post("/v1/query", json=body, headers={"Authorization": "Bearer guess"}).status_code == 401
+
+
+def test_mcp_failed_auth_attempts_are_throttled() -> None:
+    server = TRSQLMCPServer(
+        pipeline=None,  # type: ignore[arg-type]
+        auth_provider=StaticAuthProvider({}),
+        auth_failure_limiter=RateLimiter(limit_per_minute=2),
+    )
+    call = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "trsql_query", "arguments": {"question": "x", "connection_id": "demo"}},
+    }
+    guess = "not-a-valid-token"
+    codes = [server.handle_jsonrpc(call, token=guess)["error"]["code"] for _ in range(3)]
+    assert codes == [-32001, -32001, -32029]

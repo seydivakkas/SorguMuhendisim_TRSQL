@@ -20,6 +20,8 @@ from backend.core.errors import AuthorizationError
 from backend.observability import MetricsCollector
 from backend.orchestration import Pipeline, PlanPreview
 
+_AUTH_FAILURES_PER_MINUTE = 10
+
 
 class QueryBody(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -44,10 +46,17 @@ def create_app(
     connection_owners: Mapping[str, str | Collection[str]] | None = None,
     max_payload_bytes: int = 16_384,
     metrics: MetricsCollector | None = None,
+    auth_failure_limiter: RateLimiter | None = None,
 ) -> FastAPI:
-    """Create the L1 FastAPI application with auth, rate limiting, ownership, and HITL plan routes."""
+    """Create the L1 FastAPI application with auth, rate limiting, ownership, and HITL plan routes.
+
+    Authenticated requests are limited per ``tenant:user``. Failed authentication
+    attempts are limited per client address *before* the token is checked, so
+    bearer tokens cannot be brute-forced (``auth_failure_limiter``, default 10/min).
+    """
     app = FastAPI(title="TRSQL", version="1.0.0")
     limiter = rate_limiter or RateLimiter(auth_settings)
+    failures = auth_failure_limiter or RateLimiter(limit_per_minute=_AUTH_FAILURES_PER_MINUTE)
 
     async def enforce_payload_size(request: Request) -> None:
         raw_len = request.headers.get("content-length")
@@ -67,11 +76,20 @@ def create_app(
                 detail="İstek boyutu izin verilen sınırı aşıyor.",
             )
 
-    def current_user(authorization: str | None = Header(default=None)) -> AuthContext:
+    def current_user(request: Request, authorization: str | None = Header(default=None)) -> AuthContext:
+        client_key = f"auth-fail:{request.client.host if request.client else 'unknown'}"
+        wait = failures.retry_after(client_key)
+        if wait is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Çok fazla başarısız kimlik doğrulama denemesi; lütfen daha sonra tekrar deneyin.",
+                headers={"Retry-After": str(wait)},
+            )
         token = _extract_bearer_token(authorization)
         try:
             return auth_provider.authenticate(token)
         except AuthorizationError as exc:
+            failures.check(client_key)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     def authorize_request(body: QueryBody, auth: AuthContext) -> QueryRequest:
