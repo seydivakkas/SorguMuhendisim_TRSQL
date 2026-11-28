@@ -54,6 +54,8 @@ def test_requires_auth() -> None:
     assert client.get("/health").json() == {"status": "ok"}
     r = client.post("/v1/query", json={"question": "kaç bayi var", "connection_id": "demo"})
     assert r.status_code == 401
+    # Security counters must not be readable anonymously.
+    assert client.get("/metrics").status_code == 401
 
 
 def test_plan_preview_hitl_without_sql_execution(

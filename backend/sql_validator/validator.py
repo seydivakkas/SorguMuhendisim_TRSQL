@@ -68,8 +68,54 @@ _ALWAYS_FORBIDDEN_FUNCTIONS = frozenset(
         "current_setting",
         "query_to_xml",
         "table_to_xml",
+        # PostgreSQL: XML exporters that run arbitrary SQL or dump whole schemas.
+        "query_to_xmlschema",
+        "query_to_xml_and_xmlschema",
+        "table_to_xmlschema",
+        "table_to_xml_and_xmlschema",
+        "cursor_to_xml",
+        "cursor_to_xmlschema",
+        "schema_to_xml",
+        "schema_to_xmlschema",
+        "schema_to_xml_and_xmlschema",
+        "database_to_xml",
+        "database_to_xmlschema",
+        "database_to_xml_and_xmlschema",
+        # PostgreSQL: executes its string argument as a query (validator bypass).
+        "ts_stat",
+        # PostgreSQL: sequence side effects, notifications, WAL messages.
+        "nextval",
+        "setval",
+        "pg_notify",
+        # SQLite: allocate arbitrarily large blobs in a single VM step (memory DoS).
+        "randomblob",
+        "zeroblob",
     }
 )
+
+# Whole families of side-effecting or server-introspecting functions.
+_FORBIDDEN_FUNCTION_PREFIXES = (
+    "pg_sleep",
+    "pg_advisory",
+    "pg_try_advisory",
+    "pg_read",
+    "pg_ls_",
+    "pg_file",
+    "pg_logical",
+    "pg_replication",
+    "pg_create_",
+    "pg_drop_",
+    "pg_switch",
+    "pg_backup",
+    "pg_promote",
+    "pg_terminate",
+    "pg_cancel",
+    "lo_",
+    "dblink",
+)
+
+# Schema qualifiers that refer to the connection's default namespace.
+_DEFAULT_SCHEMAS = frozenset({"main", "public"})
 
 _SYSTEM_PREFIXES = ("sqlite_", "pg_")
 _SYSTEM_SCHEMAS = frozenset({"information_schema", "pg_catalog", "pg_toast", "pg_temp", "sqlite_temp_master"})
@@ -188,7 +234,7 @@ class SQLValidator:
     def _check_injection(self, sql: str, tree: exp.Expression) -> CheckResult:
         for func in tree.find_all(exp.Func):
             name = (func.name if isinstance(func, exp.Anonymous) else func.sql_name()).lower()
-            if name in self._forbidden_funcs:
+            if name in self._forbidden_funcs or name.startswith(_FORBIDDEN_FUNCTION_PREFIXES):
                 return _fail(CheckName.INJECTION, Severity.SECURITY, f"Yasaklı fonksiyon: {name}")
         if "--" in sql or "/*" in sql:
             return _fail(CheckName.INJECTION, Severity.REPAIRABLE, "SQL yorum satırı içermemeli.")
@@ -201,6 +247,12 @@ class SQLValidator:
         denied_cols = {c.lower() for c in auth.denied_columns}
         cte_names = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
 
+        def schema_fail(message: str) -> tuple[CheckResult, CheckResult]:
+            return _fail(CheckName.SCHEMA, Severity.REPAIRABLE, message), _ok(CheckName.AUTHORIZATION)
+
+        def auth_fail(message: str) -> tuple[CheckResult, CheckResult]:
+            return _ok(CheckName.SCHEMA), _fail(CheckName.AUTHORIZATION, Severity.SECURITY, message)
+
         alias_to_table: dict[str, str] = {}
         tvf_aliases: set[str] = set()
         real_tables: set[str] = set()
@@ -211,73 +263,86 @@ class SQLValidator:
                 continue
             name = table.name.lower()
             qualifier = (table.db or "").lower()
+            catalog = (table.catalog or "").lower()
             if name in cte_names and not qualifier:
                 continue
             if (
                 qualifier in _SYSTEM_SCHEMAS
                 or qualifier.startswith(_SYSTEM_PREFIXES)
+                or catalog in _SYSTEM_SCHEMAS
                 or name.startswith(_SYSTEM_PREFIXES)
                 or name in _SYSTEM_SCHEMAS
             ):
-                return (_ok(CheckName.SCHEMA), _fail(
-                    CheckName.AUTHORIZATION, Severity.SECURITY, "Sistem kataloğuna erişim yasak.",
-                ))  # fmt: skip
-            if schema.table(name) is not None and name not in allowed:
-                return (_ok(CheckName.SCHEMA), _fail(
-                    CheckName.AUTHORIZATION, Severity.SECURITY, "Yetkisiz veri erişimi.",
-                ))  # fmt: skip
-            if schema.table(name) is None:
-                return (
-                    _fail(CheckName.SCHEMA, Severity.REPAIRABLE, f"Tablo bulunamadı: {name}"),
-                    _ok(CheckName.AUTHORIZATION),
-                )
-            real_tables.add(name)
-            alias_to_table[table.alias_or_name.lower()] = name
+                return auth_fail("Sistem kataloğuna erişim yasak.")
+            # Resolve the schema qualifier: ``hr.dealers`` must not be treated as ``dealers``.
+            key: str | None
+            if catalog:
+                key = None
+            elif qualifier and schema.table(f"{qualifier}.{name}") is not None:
+                key = f"{qualifier}.{name}"
+            elif not qualifier or qualifier in _DEFAULT_SCHEMAS:
+                key = name
+            else:
+                key = None
+            if key is None or schema.table(key) is None:
+                return schema_fail(f"Tablo bulunamadı: {name}")
+            if key not in allowed:
+                return auth_fail("Yetkisiz veri erişimi.")
+            real_tables.add(key)
+            alias_to_table[table.alias_or_name.lower()] = key
 
         def denied_in(tables: set[str]) -> bool:
-            return any(c.split(".", 1)[0] in tables for c in denied_cols)
+            return any(c.rsplit(".", 1)[0] in tables for c in denied_cols)
 
-        # SELECT * would expose denied columns.
+        # A projected ``*`` / ``t.*`` would expose denied columns. ``COUNT(*)`` does not.
         for star in tree.find_all(exp.Star):
             parent_col = star.parent if isinstance(star.parent, exp.Column) else None
+            if parent_col is None and isinstance(star.parent, exp.Func):
+                continue
             scope = (
                 {alias_to_table.get(parent_col.table.lower(), "")}
                 if parent_col and parent_col.table
                 else real_tables
             )
             if denied_in(scope):
-                return (_ok(CheckName.SCHEMA), _fail(
-                    CheckName.AUTHORIZATION, Severity.SECURITY, "Yetkisiz sütun erişimi (*).",
-                ))  # fmt: skip
+                return auth_fail("Yetkisiz sütun erişimi (*).")
 
-        select_aliases = {a.alias.lower() for a in tree.find_all(exp.Alias)}
+        # Names that legitimately resolve to something other than a base-table column.
+        derived_names = {a.alias.lower() for a in tree.find_all(exp.Alias)}
+        subquery_aliases = {sq.alias.lower() for sq in tree.find_all(exp.Subquery) if sq.alias}
+        for node in tree.find_all(exp.CTE, exp.Subquery):
+            alias = node.args.get("alias")
+            if isinstance(alias, exp.TableAlias):
+                derived_names |= {c.name.lower() for c in alias.columns}
+            inner = node.this
+            if isinstance(inner, exp.Query):
+                derived_names |= {n.lower() for n in inner.named_selects}
+
         for col in tree.find_all(exp.Column):
             if isinstance(col.this, exp.Star):
                 continue
             cname = col.name.lower()
             qualifier = col.table.lower() if col.table else ""
             if qualifier:
-                if qualifier in cte_names or qualifier in tvf_aliases:
-                    continue
+                # Real-table aliases win: a CTE named like an alias must not hide ``x.secret``.
                 tname = alias_to_table.get(qualifier)
                 if tname is None:
-                    return (
-                        _fail(
-                            CheckName.SCHEMA, Severity.REPAIRABLE, f"Bilinmeyen tablo takma adı: {qualifier}"
-                        ),
-                        _ok(CheckName.AUTHORIZATION),
-                    )
+                    if qualifier in cte_names or qualifier in tvf_aliases or qualifier in subquery_aliases:
+                        continue
+                    return schema_fail(f"Bilinmeyen tablo takma adı: {qualifier}")
                 candidates = {tname}
             else:
                 candidates = real_tables
             if any(f"{t}.{cname}" in denied_cols for t in candidates):
-                return (_ok(CheckName.SCHEMA), _fail(
-                    CheckName.AUTHORIZATION, Severity.SECURITY, "Yetkisiz sütun erişimi.",
-                ))  # fmt: skip
+                return auth_fail("Yetkisiz sütun erişimi.")
             exists = any((info := schema.table(t)) is not None and info.column(cname) for t in candidates)
-            if not exists and not (not qualifier and (cname in select_aliases or cte_names or tvf_aliases)):
-                return (
-                    _fail(CheckName.SCHEMA, Severity.REPAIRABLE, f"Sütun bulunamadı: {cname}"),
-                    _ok(CheckName.AUTHORIZATION),
-                )
+            if exists:
+                continue
+            # PostgreSQL whole-row reference (``SELECT d``, ``row_to_json(d)``, ``(d).col``)
+            # exposes every column of the table, including denied ones.
+            if not qualifier and cname in alias_to_table and denied_in({alias_to_table[cname]}):
+                return auth_fail("Yetkisiz sütun erişimi.")
+            if not qualifier and (cname in derived_names or tvf_aliases):
+                continue
+            return schema_fail(f"Sütun bulunamadı: {cname}")
         return _ok(CheckName.SCHEMA), _ok(CheckName.AUTHORIZATION)

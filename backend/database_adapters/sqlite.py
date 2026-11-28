@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from backend.core.contracts import (
     ApprovedQuery,
+    AuthContext,
     ColumnInfo,
     Dialect,
     ExecutionResult,
@@ -21,6 +23,10 @@ _ALLOWED_ACTIONS = frozenset({
 })  # fmt: skip
 
 
+# Upper bound for any single string/blob value produced while executing a query.
+_MAX_VALUE_BYTES = 10_000_000
+
+
 def _authorizer(action: int, arg1: str | None, arg2: str | None, db: str | None, src: str | None) -> int:
     if action in _ALLOWED_ACTIONS:
         if action == sqlite3.SQLITE_READ and arg1 and arg1.lower().startswith("sqlite_"):
@@ -29,13 +35,40 @@ def _authorizer(action: int, arg1: str | None, arg2: str | None, db: str | None,
     return sqlite3.SQLITE_DENY
 
 
+_Authorizer = Callable[[int, str | None, str | None, str | None, str | None], int]
+
+
+def _scoped_authorizer(auth: AuthContext) -> _Authorizer:
+    """Authorizer that also enforces the RBAC allow-list at the database level.
+
+    The validator is the primary gate; this is defense in depth so that a
+    validator bug cannot read a forbidden table or a denied column.
+    """
+    allowed = {t.lower() for t in auth.allowed_tables}
+    denied = {c.lower() for c in auth.denied_columns}
+
+    def check(action: int, arg1: str | None, arg2: str | None, db: str | None, src: str | None) -> int:
+        verdict = _authorizer(action, arg1, arg2, db, src)
+        if verdict != sqlite3.SQLITE_OK or action != sqlite3.SQLITE_READ or not arg1:
+            return verdict
+        table = arg1.lower()
+        if table not in allowed:
+            return sqlite3.SQLITE_DENY
+        if arg2 and f"{table}.{arg2.lower()}" in denied:
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    return check
+
+
 class SQLiteAdapter:
     """Read-only SQLite access with layered protection:
 
     1. file opened with ``mode=ro`` (URI),
     2. ``PRAGMA query_only = ON``,
-    3. an authorizer that allows only SELECT/READ/FUNCTION,
-    4. a progress-handler timeout and a hard row cap.
+    3. an authorizer that allows only SELECT/READ/FUNCTION and, when the query
+       carries an identity, only the tables/columns that identity may read,
+    4. a progress-handler timeout, a per-value size limit and a hard row cap.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -76,7 +109,8 @@ class SQLiteAdapter:
 
     def execute(self, query: ApprovedQuery) -> ExecutionResult:
         conn = self._connect()
-        conn.set_authorizer(_authorizer)
+        conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, _MAX_VALUE_BYTES)
+        conn.set_authorizer(_scoped_authorizer(query.auth) if query.auth is not None else _authorizer)
         deadline = time.monotonic() + query.timeout_ms / 1000
         conn.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 1000)
         started = time.perf_counter()

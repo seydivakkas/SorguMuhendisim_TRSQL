@@ -103,7 +103,8 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/metrics")
-    def get_metrics() -> dict[str, object]:
+    def get_metrics(auth: AuthContext = Depends(current_user)) -> dict[str, object]:
+        # Security counters reveal attack activity; never serve them anonymously.
         if metrics is None:
             return {"enabled": False}
         snap = metrics.snapshot()
