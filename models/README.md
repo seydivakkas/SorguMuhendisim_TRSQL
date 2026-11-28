@@ -17,7 +17,7 @@
 | XiYanSQL-QwenCoder-7B-2504 | [xiyansql-qwencoder-7b.md](xiyansql-qwencoder-7b.md) | SQL adayı (M-Schema) | Q5_K_M GGUF | Apache-2.0 | Evet |
 | Arctic-Text2SQL-R1-7B | [arctic-text2sql-r1-7b.md](arctic-text2sql-r1-7b.md) | SQL adayı (GRPO RL) | Q5_K_M GGUF | Apache-2.0 | Evet |
 | Qwen3-4B-Instruct-2507 | [qwen3-4b-instruct.md](qwen3-4b-instruct.md) | Küçük kontrol modeli | Q5_K_M GGUF | Apache-2.0 | Evet |
-| BGE-M3 GGUF | [bge-m3-gguf.md](bge-m3-gguf.md) | Gömme modeli (CPU) | F16 GGUF | MIT | Evet |
+| BGE-M3 GGUF | [bge-m3-gguf.md](bge-m3-gguf.md) | Gömme modeli (CPU) | Q8_0 GGUF (`ggml-org`) | MIT | Evet |
 
 ## Lisans Uyarısı (`qwen-research`)
 

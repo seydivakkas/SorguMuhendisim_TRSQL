@@ -4,7 +4,7 @@
 
 - Python 3.11+ (3.12 önerilir)
 - Git
-- (Model deneyleri için) NVIDIA sürücüsü + CUDA; llama.cpp kurulumu AR-05'te belgelenecek
+- (Model deneyleri için) NVIDIA sürücüsü + CUDA; adım adım kurulum için [Yerel GPU Kurulumu](local-gpu-setup.md) (`tools/env_report.py`) kılavuzuna bakın
 
 ## Kurulum
 

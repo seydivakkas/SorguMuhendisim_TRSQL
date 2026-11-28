@@ -40,6 +40,7 @@ class ModelSpec:
     key: str
     name: str
     repo_id: str
+    revision: str
     filename: str
     quantization: str
     license: str
@@ -50,6 +51,7 @@ class ModelSpec:
     vram_mb_estimate: int
     commercial_allowed: bool
     card_path: str
+    source_repo_id: str = ""
     notes: str = ""
 
 
@@ -57,13 +59,16 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
     "hati-glint-sql-9b": ModelSpec(
         key="hati-glint-sql-9b",
         name="Hati-Glint-SQL-9B-v1",
-        repo_id="runelab-ai/Hati-Glint-SQL-9B-v1",
+        repo_id="mradermacher/Hati-Glint-SQL-9B-v1-GGUF",
+        source_repo_id="runelab-ai/Hati-Glint-SQL-9B-v1",
+        revision="1c699b3c71728ffc64f84028ad08f6394a6ecec8",
         filename="Hati-Glint-SQL-9B-v1.Q4_K_M.gguf",
         quantization="Q4_K_M",
         license="apache-2.0 + NOTICE",
         url=(
-            "https://huggingface.co/runelab-ai/Hati-Glint-SQL-9B-v1/"
-            "resolve/main/Hati-Glint-SQL-9B-v1.Q4_K_M.gguf"
+            "https://huggingface.co/mradermacher/Hati-Glint-SQL-9B-v1-GGUF/"
+            "resolve/1c699b3c71728ffc64f84028ad08f6394a6ecec8/"
+            "Hati-Glint-SQL-9B-v1.Q4_K_M.gguf"
         ),
         sha256=None,
         role="sql_generation",
@@ -71,18 +76,24 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
         vram_mb_estimate=6400,
         commercial_allowed=True,
         card_path="models/hati-glint-sql-9b.md",
-        notes="Qwen3.5-9B tabanli Turkce LoRA SFT; NOTICE dosyasi korunmalidir.",
+        notes=(
+            "Resmi depo safetensors; topluluk GGUF (mradermacher). "
+            "Qwen3.5-9B tabanli Turkce LoRA SFT; NOTICE dosyasi korunmalidir."
+        ),
     ),
     "xiyansql-qwencoder-7b": ModelSpec(
         key="xiyansql-qwencoder-7b",
         name="XiYanSQL-QwenCoder-7B-2504",
-        repo_id="XGenerationLab/XiYanSQL-QwenCoder-7B-2504",
+        repo_id="mradermacher/XiYanSQL-QwenCoder-7B-2504-GGUF",
+        source_repo_id="XGenerationLab/XiYanSQL-QwenCoder-7B-2504",
+        revision="4534c21a8e97ba2cc85faf4446e6e0ee737b761c",
         filename="XiYanSQL-QwenCoder-7B-2504.Q5_K_M.gguf",
         quantization="Q5_K_M",
         license="apache-2.0",
         url=(
-            "https://huggingface.co/XGenerationLab/XiYanSQL-QwenCoder-7B-2504/"
-            "resolve/main/XiYanSQL-QwenCoder-7B-2504.Q5_K_M.gguf"
+            "https://huggingface.co/mradermacher/XiYanSQL-QwenCoder-7B-2504-GGUF/"
+            "resolve/4534c21a8e97ba2cc85faf4446e6e0ee737b761c/"
+            "XiYanSQL-QwenCoder-7B-2504.Q5_K_M.gguf"
         ),
         sha256=None,
         role="sql_generation",
@@ -91,20 +102,23 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
         commercial_allowed=True,
         card_path="models/xiyansql-qwencoder-7b.md",
         notes=(
-            "M-Schema ile egitilmistir. 3B surumu (Qwen2.5-Coder-3B tabanli) "
-            "qwen-research lisans riski nedeniyle aday listesinden cikarilmistir."
+            "Resmi depo safetensors; topluluk GGUF (mradermacher). M-Schema ile egitilmistir. "
+            "3B surumu qwen-research lisans riski nedeniyle disarida birakilmistir."
         ),
     ),
     "arctic-text2sql-r1-7b": ModelSpec(
         key="arctic-text2sql-r1-7b",
         name="Arctic-Text2SQL-R1-7B",
-        repo_id="Snowflake/Arctic-Text2SQL-R1-7B",
+        repo_id="mradermacher/Arctic-Text2SQL-R1-7B-GGUF",
+        source_repo_id="Snowflake/Arctic-Text2SQL-R1-7B",
+        revision="8e1a51188952afa8021bce6c8b3e5b495b3e85cd",
         filename="Arctic-Text2SQL-R1-7B.Q5_K_M.gguf",
         quantization="Q5_K_M",
         license="apache-2.0",
         url=(
-            "https://huggingface.co/Snowflake/Arctic-Text2SQL-R1-7B/"
-            "resolve/main/Arctic-Text2SQL-R1-7B.Q5_K_M.gguf"
+            "https://huggingface.co/mradermacher/Arctic-Text2SQL-R1-7B-GGUF/"
+            "resolve/8e1a51188952afa8021bce6c8b3e5b495b3e85cd/"
+            "Arctic-Text2SQL-R1-7B.Q5_K_M.gguf"
         ),
         sha256=None,
         role="sql_generation",
@@ -112,18 +126,21 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
         vram_mb_estimate=6100,
         commercial_allowed=True,
         card_path="models/arctic-text2sql-r1-7b.md",
-        notes="GRPO ile egitilmis 7B akil yurutme modeli; <think> blogu ayristirilir.",
+        notes="Resmi depo safetensors; topluluk GGUF (mradermacher). GRPO RL modeli.",
     ),
     "qwen3-4b-instruct": ModelSpec(
         key="qwen3-4b-instruct",
         name="Qwen3-4B-Instruct-2507",
-        repo_id="Qwen/Qwen3-4B-Instruct-2507",
-        filename="Qwen3-4B-Instruct-2507.Q5_K_M.gguf",
+        repo_id="unsloth/Qwen3-4B-Instruct-2507-GGUF",
+        source_repo_id="Qwen/Qwen3-4B-Instruct-2507",
+        revision="a06e946bb6b655725eafa393f4a9745d460374c9",
+        filename="Qwen3-4B-Instruct-2507-Q5_K_M.gguf",
         quantization="Q5_K_M",
         license="apache-2.0",
         url=(
-            "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/"
-            "resolve/main/Qwen3-4B-Instruct-2507.Q5_K_M.gguf"
+            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/"
+            "resolve/a06e946bb6b655725eafa393f4a9745d460374c9/"
+            "Qwen3-4B-Instruct-2507-Q5_K_M.gguf"
         ),
         sha256=None,
         role="control",
@@ -131,23 +148,29 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
         vram_mb_estimate=3600,
         commercial_allowed=True,
         card_path="models/qwen3-4b-instruct.md",
-        notes="Kucuk kontrol modeli; qwen-research kisitli 3B yerine Apache-2.0 alternatiftir.",
+        notes="Unsloth GGUF; kucuk Apache-2.0 kontrol modeli (qwen-research 3B yerine).",
     ),
     "bge-m3-gguf": ModelSpec(
         key="bge-m3-gguf",
         name="BGE-M3-GGUF",
-        repo_id="BAAI/bge-m3",
-        filename="bge-m3-f16.gguf",
-        quantization="F16",
+        repo_id="ggml-org/bge-m3-Q8_0-GGUF",
+        source_repo_id="BAAI/bge-m3",
+        revision="9eba04c5d75ba5a1595e45de734d36bef4e5cb98",
+        filename="bge-m3-q8_0.gguf",
+        quantization="Q8_0",
         license="mit",
-        url="https://huggingface.co/BAAI/bge-m3/resolve/main/bge-m3-f16.gguf",
+        url=(
+            "https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF/"
+            "resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98/"
+            "bge-m3-q8_0.gguf"
+        ),
         sha256=None,
         role="embedding",
         context_length=8192,
         vram_mb_estimate=0,
         commercial_allowed=True,
         card_path="models/bge-m3-gguf.md",
-        notes="CPU uzerinde llama.cpp embedding modu (n_gpu_layers=0) ile calistirilir.",
+        notes="ggml-org Q8_0 GGUF; CPU embedding (n_gpu_layers=0).",
     ),
 }
 
@@ -349,8 +372,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         for spec in CANDIDATE_MODELS.values():
             sha_status = spec.sha256 or "DOĞRULANACAK"
             print(
-                f"{spec.key:24s} | {spec.quantization:7s} | {spec.license:20s} | "
-                f"vram~{spec.vram_mb_estimate}MB | sha256={sha_status}"
+                f"{spec.key:24s} | {spec.quantization:7s} | rev={spec.revision[:10]} | "
+                f"{spec.license:20s} | vram~{spec.vram_mb_estimate}MB | sha256={sha_status}"
             )
         print("\nLisans uyarısı: Qwen2.5-Coder-3B ve XiYanSQL-QwenCoder-3B 'qwen-research' riski taşır.")
         return 0

@@ -3,10 +3,11 @@
 | Alan | Değer |
 |---|---|
 | **Ad / sürüm** | XiYanSQL-QwenCoder-7B-2504 (taban: `Qwen/Qwen2.5-Coder-7B`) |
-| **Kaynak URL ve commit/revizyon** | `https://huggingface.co/XGenerationLab/XiYanSQL-QwenCoder-7B-2504` (revizyon indirme sırasında sabitlenir) |
+| **Resmî kaynak depo** | `https://huggingface.co/XGenerationLab/XiYanSQL-QwenCoder-7B-2504` (safetensors, revizyon `afe320fcaf18bee342174b4e35e5a481ae93719f`) |
+| **GGUF depo ve revizyon** | `https://huggingface.co/mradermacher/XiYanSQL-QwenCoder-7B-2504-GGUF` · commit `4534c21a8e97ba2cc85faf4446e6e0ee737b761c` (topluluk GGUF, yükleyen: `mradermacher`) |
 | **Lisans ve izin verilen kullanım** | `Apache-2.0` — ticari üretim, ince ayar ve dağıtım serbest (`LICENSE` + `NOTICE` korunur) |
-| **Quantization / dosya** | `Q5_K_M` GGUF (`XiYanSQL-QwenCoder-7B-2504.Q5_K_M.gguf`) |
-| **Dosya SHA-256** | Doğrulanacak (`python models/download.py verify` ile sabitlenir) |
+| **Quantization / dosya** | `Q5_K_M` GGUF (`XiYanSQL-QwenCoder-7B-2504.Q5_K_M.gguf`, 5,44 GB) |
+| **Dosya SHA-256** | Yerel doğrulama T-09'da sabitlenir (HF LFS özeti: `78fa28d0c53fb56498ea92d7ec13d9b3485e7264afe61aa783ef58e01422e278`) |
 | **Bağlam uzunluğu** | Taban 128K; 8 GB referans dizüstünde 4096–8192 (`kv_cache_type = "q8_0"`) |
 | **Ölçülen tepe VRAM (referans dizüstü)** | Henüz F2 (D0/D1) deneyinde ölçülmedi (bütçe sınırı: `6800 MB`) |
 | **İstem şablonu (`template_id`)** | `mschema_v1` (D1, eğitim formatı) ve `ddl_v1` (D0) |

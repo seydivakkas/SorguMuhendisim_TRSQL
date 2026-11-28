@@ -3,10 +3,11 @@
 | Alan | Değer |
 |---|---|
 | **Ad / sürüm** | BGE-M3 (~568M parametre, çok dilli gömme modeli) |
-| **Kaynak URL ve commit/revizyon** | `https://huggingface.co/BAAI/bge-m3` (GGUF yerel kopyası) |
+| **Resmî kaynak depo** | `https://huggingface.co/BAAI/bge-m3` (safetensors, revizyon `5617a9f61b028005a4858fdac845db406aefb181`) |
+| **GGUF depo ve revizyon** | `https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF` · commit `9eba04c5d75ba5a1595e45de734d36bef4e5cb98` (resmî `ggml-org` GGUF) |
 | **Lisans ve izin verilen kullanım** | `MIT` — ticari kullanım ve dağıtım serbest |
-| **Quantization / dosya** | `F16` / `Q8_0` GGUF (`bge-m3-f16.gguf`) |
-| **Dosya SHA-256** | Doğrulanacak (`python models/download.py verify` ile sabitlenir) |
+| **Quantization / dosya** | `Q8_0` GGUF (`bge-m3-q8_0.gguf`, 634,5 MB) |
+| **Dosya SHA-256** | Yerel doğrulama T-09'da sabitlenir (HF LFS özeti: `aa473d51f451a22f0fcf39ba3330c14bed38a385712b1113440f69df4047a173`) |
 | **Bağlam uzunluğu** | 8192 token |
 | **Ölçülen tepe VRAM (referans dizüstü)** | `0 MB` — **CPU'da çalışır** (`n_gpu_layers = 0`, 32 GB sistem RAM kullanır) |
 | **Port / Arayüz** | `backend.core.ports.EmbeddingAdapter` (`embed(texts: list[str]) -> list[list[float]]`) |

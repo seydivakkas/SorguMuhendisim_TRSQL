@@ -35,3 +35,43 @@ jobs:
         run: pytest -m security -q
       - name: G5 — Full test suite
         run: pytest -q --cov=backend --cov-report=term-missing
+
+  postgres-integration:
+    name: PostgreSQL 16 integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: trsql
+          POSTGRES_USER: trsql_admin
+          POSTGRES_PASSWORD: ci_ephemeral_admin_pw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U trsql_admin -d trsql"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install with postgres extra
+        run: pip install -e ".[dev,postgres]"
+      - name: Initialize schema, roles, RLS, and masking
+        env:
+          PGPASSWORD: ci_ephemeral_admin_pw
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          psql -h 127.0.0.1 -U trsql_admin -d trsql -f synthetic_data/schema/erp.sql
+          psql -h 127.0.0.1 -U trsql_admin -d trsql -f deployment/postgres/roles.sql
+          psql -h 127.0.0.1 -U trsql_admin -d trsql -c "ALTER ROLE nl2sql_reader WITH PASSWORD 'ci_ephemeral_reader_pw';"
+          psql -h 127.0.0.1 -U trsql_admin -d trsql -f deployment/postgres/rls.sql
+          psql -h 127.0.0.1 -U trsql_admin -d trsql -f deployment/postgres/masking.sql
+      - name: Run live PostgreSQL integration tests
+        env:
+          TRSQL_PG_TEST_DSN: postgresql://nl2sql_reader:ci_ephemeral_reader_pw@127.0.0.1:5432/trsql
+        run: pytest -m postgres -q

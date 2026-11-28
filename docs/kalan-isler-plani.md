@@ -628,9 +628,9 @@ ayrımını ekle (E-15). Tamamlanan görevleri bu dosyada `[x]` yap.
 - [x] T-05 Çok şemalı RBAC
 - [x] T-06 Frontend `/v1/plan` + testler
 - [ ] T-07 Yerel ortam (CUDA llama-cpp-python, psycopg, …)
-- [ ] T-08 Model manifest doğrulama
+- [x] T-08 Model manifest doğrulama
 - [ ] T-09 GGUF indirme + SHA + GPU duman testi + VRAM
-- [ ] T-10 Veri kümeleri
+- [x] T-10 Veri kümeleri
 - [ ] T-11 Yerel PG + canlı entegrasyon testleri
 - [ ] T-12 CI PostgreSQL işi
 - [ ] T-13 D0/D1
