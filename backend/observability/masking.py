@@ -4,8 +4,20 @@ import re
 
 # Order matters: longer / more specific patterns first.
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Credentials embedded in connection strings: scheme://user:password@host
+    (re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^\s:/@]+:\S+@", re.IGNORECASE), r"\1[SECRET]@"),
     (re.compile(r"\bTR\d{2}(?:\s?\d{4}){5}\s?\d{2}\b", re.IGNORECASE), "[IBAN]"),
-    (re.compile(r"(?i)\b(?:password|parola|şifre|secret|token|api[_-]?key)\s*[:=]\s*\S+"), "[SECRET]"),
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer [SECRET]"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"), "[SECRET]"),
+    # key=value / "key": "value" pairs, including Turkish inflections (şifresi, parolası).
+    (
+        re.compile(
+            r"(?i)[\"']?\b(?:password|passwd|pwd|parola\w*|şifre\w*|secret|token|"
+            r"api[_-]?key|access[_-]?key|private[_-]?key)[\"']?\s*[:=]\s*"
+            r"(?:\"[^\"]*\"|'[^']*'|[^\s,;}]+)"
+        ),
+        "[SECRET]",
+    ),
     (re.compile(r"\b(?:sk|pk|ghp|gho|xox[abp])[-_][A-Za-z0-9_-]{10,}\b"), "[SECRET]"),
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"), "[EMAIL]"),
     (re.compile(r"\b[1-9]\d{10}\b"), "[TCKN]"),
