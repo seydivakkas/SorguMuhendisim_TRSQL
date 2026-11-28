@@ -8,7 +8,6 @@ and ``llama.cpp`` CUDA GPU offload support with zero network calls.
 from __future__ import annotations
 
 import argparse
-import importlib
 import importlib.metadata
 import json
 import sys
@@ -20,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from backend.model_engine import probe_llama_cpp_support  # noqa: E402
 from benchmarks.hardware import collect_hardware_info  # noqa: E402
 
 
@@ -31,21 +31,7 @@ def _pkg_version(dist_name: str) -> str | None:
 
 
 def _probe_llama_cpp() -> dict[str, Any]:
-    version = _pkg_version("llama-cpp-python")
-    if version is None:
-        return {"installed": False, "version": None, "gpu_offload": False}
-    try:
-        mod = importlib.import_module("llama_cpp")
-        fn = getattr(mod, "llama_supports_gpu_offload", None)
-        gpu_offload = bool(fn()) if callable(fn) else False
-        return {"installed": True, "version": version, "gpu_offload": gpu_offload}
-    except Exception as exc:  # pragma: no cover - broken native DLL load
-        return {
-            "installed": True,
-            "version": version,
-            "gpu_offload": False,
-            "error": type(exc).__name__,
-        }
+    return dict(probe_llama_cpp_support())
 
 
 def collect_env_report(repo_root: str | Path | None = None) -> dict[str, Any]:

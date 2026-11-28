@@ -7,9 +7,9 @@
 | **GGUF depo ve revizyon** | `https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF` · commit `9eba04c5d75ba5a1595e45de734d36bef4e5cb98` (resmî `ggml-org` GGUF) |
 | **Lisans ve izin verilen kullanım** | `MIT` — ticari kullanım ve dağıtım serbest |
 | **Quantization / dosya** | `Q8_0` GGUF (`bge-m3-q8_0.gguf`, 634,5 MB) |
-| **Dosya SHA-256** | Yerel doğrulama T-09'da sabitlenir (HF LFS özeti: `aa473d51f451a22f0fcf39ba3330c14bed38a385712b1113440f69df4047a173`) |
+| **Dosya SHA-256** | `aa473d51f451a22f0fcf39ba3330c14bed38a385712b1113440f69df4047a173` (T-09 yerel doğrulama ile sabitlendi) |
 | **Bağlam uzunluğu** | 8192 token |
-| **Ölçülen tepe VRAM (referans dizüstü)** | `0 MB` — **CPU'da çalışır** (`n_gpu_layers = 0`, 32 GB sistem RAM kullanır) |
+| **Ölçülen tepe VRAM (referans dizüstü)** | `0 MB` GPU VRAM — **CPU'da çalışır** (`n_gpu_layers = 0`, 32 GB sistem RAM; `n_ctx = 8192`, `1024` boyutlu vektör, 2 Türkçe sorgu `1.93 sn`) |
 | **Port / Arayüz** | `backend.core.ports.EmbeddingAdapter` (`embed(texts: list[str]) -> list[list[float]]`) |
 | **Bilinen skorlar ve kaynağı** | Çok dilli (Türkçe dahil) yoğun geri getirme; TRSQL F4 (D3) deneyinde Retrieval Recall@5 ≥ 0.90 hedefiyle ölçülür |
 

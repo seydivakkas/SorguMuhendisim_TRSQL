@@ -23,8 +23,23 @@ pip install "huggingface-hub>=0.24"
 
 ### Yol A — Önceden Derlenmiş CUDA Tekerleği (Önerilen, VS Build Tools Gerektirmez)
 
+Qwen3 (`qwen3` GGUF mimarisi) dahil güncel modeller için `llama-cpp-python >= 0.4.8+cu128`
+(`JamePeng/llama-cpp-python` sürümleri) veya yalnızca Qwen2.5 tabanlı modeller için `0.3.4` (`abetlen`) kullanın:
+
 ```powershell
+# Önerilen (Qwen3 + Qwen2.5 + CUDA 12.8+): JamePeng release cp312 win_amd64 +cu128 tekerleği
+pip install "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.8-cu128-win-20261122/llama_cpp_python-0.4.8%2Bcu128-cp312-cp312-win_amd64.whl"
+
+# Alternatif (yalnızca Qwen2.5 ve eski mimariler için abetlen 0.3.x):
 pip install "llama-cpp-python>=0.3" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+```
+
+Sistemde yalnızca CUDA 11.x kuruluysa (`cudart64_12.dll` / `cublas64_12.dll` eksikse)
+PyPI'deki çalışma zamanı tekerleklerini sanal ortama ekleyin (`backend.model_engine.llama_cpp`
+Windows'ta bu dizinleri otomatik olarak DLL arama yoluna kaydeder):
+
+```powershell
+pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12
 ```
 
 ### Yol B — Kaynaktan Derleme (Visual Studio C++ Build Tools + CUDA Toolkit 12.x ile)

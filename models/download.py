@@ -142,7 +142,7 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
             "resolve/a06e946bb6b655725eafa393f4a9745d460374c9/"
             "Qwen3-4B-Instruct-2507-Q5_K_M.gguf"
         ),
-        sha256=None,
+        sha256="5bde5e9d883622acb02bf77fe7dcbc56a8b9a9ad4be78a72ca23a532658b4ecb",
         role="control",
         context_length=8192,
         vram_mb_estimate=3600,
@@ -164,7 +164,7 @@ CANDIDATE_MODELS: dict[str, ModelSpec] = {
             "resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98/"
             "bge-m3-q8_0.gguf"
         ),
-        sha256=None,
+        sha256="aa473d51f451a22f0fcf39ba3330c14bed38a385712b1113440f69df4047a173",
         role="embedding",
         context_length=8192,
         vram_mb_estimate=0,

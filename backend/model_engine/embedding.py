@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 import math
 import re
 import struct
@@ -9,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from backend.core.errors import ConfigError, ExecutionError
+from backend.model_engine.llama_cpp import _accepts_named_kwarg, _import_llama_cpp
 
 _FORBIDDEN_WEIGHT_SUFFIXES = frozenset({".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle", ".joblib"})
 _TOKEN_RE = re.compile(r"[0-9a-zçğıöşü]+")
@@ -45,15 +45,6 @@ def _coerce_vector(raw: object, *, normalize: bool) -> list[float] | None:
         return _l2_normalize(pooled) if normalize else pooled
     vec = [float(x) for x in raw]
     return _l2_normalize(vec) if normalize else vec
-
-
-def _import_llama_cpp() -> object:
-    try:
-        return importlib.import_module("llama_cpp")
-    except ImportError as exc:
-        raise ConfigError(
-            "llama-cpp-python kurulu değil; gömme modeli için 'pip install -e .[llm]' kurun."
-        ) from exc
 
 
 class FakeEmbeddingAdapter:
@@ -155,9 +146,10 @@ class LlamaCppEmbeddingAdapter:
         if llama_cls is None or not callable(llama_cls):
             raise ConfigError("llama_cpp.Llama sınıfı bulunamadı.")
 
+        embed_param = "embeddings" if _accepts_named_kwarg(llama_cls, "embeddings") else "embedding"
         kwargs: dict[str, object] = {
             "model_path": str(path),
-            "embedding": True,
+            embed_param: True,
             "n_gpu_layers": 0,
             "n_ctx": self._context_length,
             "verbose": False,

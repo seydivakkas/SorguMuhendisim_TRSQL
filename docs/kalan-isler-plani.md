@@ -627,7 +627,7 @@ ayrımını ekle (E-15). Tamamlanan görevleri bu dosyada `[x]` yap.
 - [x] T-04 Koşucuda PostgreSQL
 - [x] T-05 Çok şemalı RBAC
 - [x] T-06 Frontend `/v1/plan` + testler
-- [ ] T-07 Yerel ortam (CUDA llama-cpp-python, psycopg, …)
+- [x] T-07 Yerel ortam (CUDA llama-cpp-python, psycopg, …)
 - [x] T-08 Model manifest doğrulama
 - [ ] T-09 GGUF indirme + SHA + GPU duman testi + VRAM
 - [x] T-10 Veri kümeleri

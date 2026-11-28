@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import importlib
+import importlib.metadata
 import inspect
 import math
+import os
 import re
 import shutil
+import site
 import subprocess
+import sysconfig
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol, cast
@@ -147,13 +152,104 @@ def extract_thinking_and_response(text: str) -> tuple[str | None, str]:
     return None, text.strip()
 
 
+_REGISTERED_DLL_DIRS: set[str] = set()
+_DLL_DIR_HANDLES: list[object] = []
+
+
+def _register_windows_cuda_dll_dirs() -> None:
+    """Register PyPI NVIDIA CUDA 12 wheel DLL folders on Windows before loading ``llama_cpp``."""
+    if os.name != "nt":
+        return
+    add_dll_dir = getattr(os, "add_dll_directory", None)
+    roots: list[Path] = []
+    for raw in [
+        *site.getsitepackages(),
+        sysconfig.get_paths().get("purelib", ""),
+        sysconfig.get_paths().get("platlib", ""),
+    ]:
+        if raw:
+            p = Path(raw)
+            if p not in roots:
+                roots.append(p)
+
+    new_bins: list[str] = []
+    for root in roots:
+        candidates: list[Path] = []
+        nvidia_dir = root / "nvidia"
+        if nvidia_dir.is_dir():
+            candidates.extend(sorted(p for p in nvidia_dir.glob("*/bin") if p.is_dir()))
+        llama_lib = root / "llama_cpp" / "lib"
+        if llama_lib.is_dir():
+            candidates.append(llama_lib)
+        for cand in candidates:
+            resolved = str(cand.resolve())
+            if resolved in _REGISTERED_DLL_DIRS:
+                continue
+            _REGISTERED_DLL_DIRS.add(resolved)
+            new_bins.append(resolved)
+            if callable(add_dll_dir):
+                try:
+                    _DLL_DIR_HANDLES.append(add_dll_dir(resolved))
+                except OSError:
+                    continue
+
+    if new_bins:
+        current_path = os.environ.get("PATH", "")
+        missing = [b for b in new_bins if b not in current_path]
+        if missing:
+            os.environ["PATH"] = f"{';'.join(missing)};{current_path}" if current_path else ";".join(missing)
+
+
 def _import_llama_cpp() -> object:
+    _register_windows_cuda_dll_dirs()
     try:
         return importlib.import_module("llama_cpp")
     except ImportError as exc:
         raise ConfigError(
             "llama-cpp-python kurulu değil; yerel GGUF çıkarımı için 'pip install -e .[llm]' kurun."
         ) from exc
+
+
+def _load_dynamic_ggml_backends(llama_mod: object) -> None:
+    """Load dynamic ggml backends (llama-cpp-python >= 0.4) before querying GPU offload."""
+    load_all = getattr(llama_mod, "ggml_backend_load_all_from_path", None)
+    if not callable(load_all):
+        inner = getattr(llama_mod, "llama", None)
+        load_all = getattr(inner, "ggml_backend_load_all_from_path", None)
+    if not callable(load_all):
+        return
+    backend_init = getattr(llama_mod, "llama_backend_init", None)
+    if callable(backend_init):
+        backend_init()
+    mod_file = getattr(llama_mod, "__file__", None)
+    if not isinstance(mod_file, str):
+        return
+    lib_dir = Path(mod_file).resolve().parent / "lib"
+    if lib_dir.is_dir():
+        load_all(ctypes.c_char_p(str(lib_dir).encode("utf-8")))
+
+
+def probe_llama_cpp_support() -> dict[str, object]:
+    """Return offline ``llama-cpp-python`` installation and GPU offload status."""
+    try:
+        version = importlib.metadata.version("llama-cpp-python")
+    except importlib.metadata.PackageNotFoundError:
+        return {"installed": False, "version": None, "gpu_offload": False}
+    try:
+        mod = _import_llama_cpp()
+        fn = getattr(mod, "llama_supports_gpu_offload", None)
+        gpu_offload = bool(fn()) if callable(fn) else False
+        if not gpu_offload and callable(fn):
+            _load_dynamic_ggml_backends(mod)
+            gpu_offload = bool(fn())
+        return {"installed": True, "version": version, "gpu_offload": gpu_offload}
+    except Exception as exc:  # pragma: no cover - broken native DLL load
+        return {
+            "installed": True,
+            "version": version,
+            "gpu_offload": False,
+            "error": type(exc).__name__,
+        }
 
 
 def _resolve_kv_cache_type(llama_mod: object, kv_cache_type: str) -> int:
@@ -163,6 +259,16 @@ def _resolve_kv_cache_type(llama_mod: object, kv_cache_type: str) -> int:
     attr_name, fallback_code, _ = _KV_CACHE_GGML_TYPES[key]
     raw_val = getattr(llama_mod, attr_name, fallback_code)
     return int(raw_val) if isinstance(raw_val, int) else fallback_code
+
+
+def _accepts_named_kwarg(callable_obj: object, name: str) -> bool:
+    if not callable(callable_obj):
+        return False
+    try:
+        sig = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return False
+    return name in sig.parameters
 
 
 def _filter_supported_kwargs(callable_obj: object, kwargs: dict[str, object]) -> dict[str, object]:
@@ -327,12 +433,15 @@ class LlamaCppAdapter:
             "model_path": str(path),
             "n_ctx": self._context_length,
             "n_gpu_layers": self._n_gpu_layers,
-            "flash_attn": self._flash_attn,
             "seed": self._seed,
             "type_k": kv_type_id,
             "type_v": kv_type_id,
             "verbose": False,
         }
+        if _accepts_named_kwarg(llama_cls, "flash_attn_type"):
+            init_kwargs["flash_attn_type"] = 1 if self._flash_attn else 0
+        else:
+            init_kwargs["flash_attn"] = self._flash_attn
         filtered_kwargs = _filter_supported_kwargs(llama_cls, init_kwargs)
         try:
             instance = llama_cls(**filtered_kwargs)

@@ -275,3 +275,54 @@ def test_registry_model_and_embedding_factories(tmp_path: Path, monkeypatch: pyt
         create_model_adapter(ModelSettings(adapter="nonexistent"))
     with pytest.raises(ConfigError, match="unknown embedding adapter"):
         create_embedding_adapter(ModelSettings(adapter="nonexistent"))
+
+
+def test_llama_cpp_adapters_support_v04_parameter_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class V04Llama:
+        def __init__(
+            self,
+            model_path: str,
+            *,
+            n_gpu_layers: int = 0,
+            n_ctx: int = 512,
+            flash_attn_type: int = -1,
+            embeddings: bool = False,
+            **kwargs: Any,
+        ) -> None:
+            calls.append(
+                {
+                    "model_path": model_path,
+                    "n_gpu_layers": n_gpu_layers,
+                    "n_ctx": n_ctx,
+                    "flash_attn_type": flash_attn_type,
+                    "embeddings": embeddings,
+                    **kwargs,
+                }
+            )
+
+        def create_chat_completion(self, **kwargs: Any) -> dict[str, Any]:
+            return {"choices": [{"message": {"content": "SELECT 1"}}]}
+
+        def create_embedding(self, texts: list[str]) -> dict[str, Any]:
+            return {"data": [{"index": i, "embedding": [1.0, 0.0]} for i, _ in enumerate(texts)]}
+
+    mod = ModuleType("llama_cpp")
+    mod.Llama = V04Llama  # type: ignore[attr-defined]
+    mod.GGML_TYPE_Q8_0 = 8  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "llama_cpp", mod)
+    monkeypatch.setattr("backend.model_engine.llama_cpp.query_nvidia_smi_vram_mb", lambda: None)
+
+    gguf = _make_dummy_gguf(tmp_path)
+    llm = LlamaCppAdapter(gguf, flash_attn=True)
+    llm.load()
+    assert calls[0]["flash_attn_type"] == 1
+    assert "flash_attn" not in calls[0]
+
+    emb = LlamaCppEmbeddingAdapter(gguf)
+    emb.embed(["test"])
+    assert calls[1]["embeddings"] is True
+    assert "embedding" not in calls[1]
