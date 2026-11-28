@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import jwt
-from jwt import PyJWK, PyJWKSet
-from jwt.exceptions import PyJWTError
 from pydantic import Field, field_validator
 
 from backend.auth.policies import RolePolicy
 from backend.core.contracts import AuthContext, Contract
 from backend.core.errors import AuthorizationError, ConfigError
+
+
+def _load_jwt() -> Any:
+    try:
+        return importlib.import_module("jwt")
+    except ImportError as exc:
+        raise ConfigError(
+            "OIDC doğrulaması için 'pyjwt[crypto]' paketi gereklidir (pip install -e \".[oidc]\")."
+        ) from exc
+
 
 _ALLOWED_ASYMMETRIC_ALGS: frozenset[str] = frozenset(
     {
@@ -115,10 +123,11 @@ class OIDCAuthProvider:
     ) -> None:
         self._config = config
         self._policies = {k.strip().lower(): v for k, v in policies.items()}
-        self._keys: tuple[PyJWK, ...] = self._load_jwks(Path(config.jwks_path))
+        self._keys: tuple[Any, ...] = self._load_jwks(Path(config.jwks_path))
 
     @staticmethod
-    def _load_jwks(path: Path) -> tuple[PyJWK, ...]:
+    def _load_jwks(path: Path) -> tuple[Any, ...]:
+        jwt_mod = _load_jwt()
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -126,14 +135,14 @@ class OIDCAuthProvider:
         if not isinstance(raw, dict) or not raw.get("keys"):
             raise ConfigError("JWKS dosyasında geçerli anahtar kümesi bulunamadı")
         try:
-            key_set = PyJWKSet.from_dict(raw)
+            key_set = jwt_mod.PyJWKSet.from_dict(raw)
         except Exception as exc:
             raise ConfigError("JWKS anahtarları ayrıştırılamadı") from exc
         if not key_set.keys:
             raise ConfigError("JWKS dosyası boş")
         return tuple(key_set.keys)
 
-    def _select_signing_key(self, kid: str | None) -> PyJWK:
+    def _select_signing_key(self, kid: str | None) -> Any:
         if kid:
             for key in self._keys:
                 if key.key_id == kid:
@@ -147,10 +156,12 @@ class OIDCAuthProvider:
         if not token or not token.strip():
             raise AuthorizationError("kimlik doğrulama gerekli")
         raw_token = token.strip()
+        jwt_mod = _load_jwt()
+        jwt_err: type[Exception] = jwt_mod.PyJWTError
 
         try:
-            header = jwt.get_unverified_header(raw_token)
-        except PyJWTError as exc:
+            header = jwt_mod.get_unverified_header(raw_token)
+        except jwt_err as exc:
             raise AuthorizationError("geçersiz OIDC belirteç başlığı") from exc
 
         alg = header.get("alg")
@@ -161,7 +172,7 @@ class OIDCAuthProvider:
         jwk = self._select_signing_key(kid if isinstance(kid, str) and kid else None)
 
         try:
-            payload: dict[str, Any] = jwt.decode(
+            payload: dict[str, Any] = jwt_mod.decode(
                 raw_token,
                 key=jwk.key,
                 algorithms=list(self._config.algorithms),
@@ -177,7 +188,7 @@ class OIDCAuthProvider:
                     "verify_aud": True,
                 },
             )
-        except PyJWTError as exc:
+        except jwt_err as exc:
             raise AuthorizationError("geçersiz veya süresi dolmuş OIDC belirteci") from exc
 
         raw_user = _extract_claim(payload, self._config.user_claim)
