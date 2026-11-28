@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import cast
 
 import sqlglot
@@ -11,27 +12,67 @@ from backend.core.contracts import (
     AuthContext,
     CheckName,
     CheckResult,
+    KnowledgeContext,
     SchemaSnapshot,
     Severity,
     SQLCandidate,
     ValidationReport,
 )
+from backend.sql_validator.business_rules import BusinessRuleSpec, validate_business_rules
+from backend.sql_validator.cost import CostThresholds, check_ast_cost
+from backend.sql_validator.semantic import validate_semantics
 
-# Statement types that must never appear anywhere in a candidate.
+# Statement/clause types that must never appear anywhere in a candidate.
 _FORBIDDEN_NODES: tuple[type[exp.Expression], ...] = tuple(
     getattr(exp, name)
     for name in (
         "Insert", "Update", "Delete", "Drop", "Create", "Alter", "Command",
         "Merge", "TruncateTable", "Into", "Pragma", "Grant", "Transaction",
-        "Commit", "Rollback", "Set", "Use", "Copy", "LoadData", "Attach", "Detach",
+        "Commit", "Rollback", "Set", "Use", "Copy", "LoadData", "Attach",
+        "Detach", "Lock",
     )
     if hasattr(exp, name)
 )  # fmt: skip
 
-_SYSTEM_PREFIXES = ("sqlite_", "pg_")
-_SYSTEM_SCHEMAS = frozenset({"information_schema", "pg_catalog", "sqlite_temp_master"})
+_ALWAYS_FORBIDDEN_FUNCTIONS = frozenset(
+    {
+        "pg_sleep",
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_stat_file",
+        "pg_ls_dir",
+        "pg_ls_logdir",
+        "pg_ls_waldir",
+        "pg_ls_tmpdir",
+        "pg_ls_archive_statusdir",
+        "pg_terminate_backend",
+        "pg_cancel_backend",
+        "pg_reload_conf",
+        "pg_rotate_logfile",
+        "pg_export_snapshot",
+        "lo_import",
+        "lo_export",
+        "lo_create",
+        "lo_unlink",
+        "lo_put",
+        "lo_get",
+        "lo_from_bytea",
+        "dblink",
+        "dblink_exec",
+        "dblink_connect",
+        "dblink_send_query",
+        "load_extension",
+        "readfile",
+        "writefile",
+        "set_config",
+        "current_setting",
+        "query_to_xml",
+        "table_to_xml",
+    }
+)
 
-_NOT_YET = "AR-07 kapsamında uygulanacak; şimdilik kontrol edilmiyor."
+_SYSTEM_PREFIXES = ("sqlite_", "pg_")
+_SYSTEM_SCHEMAS = frozenset({"information_schema", "pg_catalog", "pg_toast", "pg_temp", "sqlite_temp_master"})
 
 
 def _ok(check: CheckName, message: str = "") -> CheckResult:
@@ -43,19 +84,46 @@ def _fail(check: CheckName, severity: Severity, message: str) -> CheckResult:
 
 
 class SQLValidator:
-    def __init__(self, settings: ValidationSettings | None = None) -> None:
+    def __init__(
+        self,
+        settings: ValidationSettings | None = None,
+        *,
+        business_rules: Sequence[BusinessRuleSpec] | None = None,
+    ) -> None:
         self._settings = settings or ValidationSettings()
-        self._forbidden_funcs = frozenset(f.lower() for f in self._settings.forbidden_functions)
+        self._forbidden_funcs = _ALWAYS_FORBIDDEN_FUNCTIONS | frozenset(
+            f.lower() for f in self._settings.forbidden_functions
+        )
+        self._business_rules = business_rules
+        self._cost_thresholds = CostThresholds(
+            max_joins=self._settings.max_joins,
+            max_explain_cost=self._settings.max_explain_cost,
+            max_explain_rows=self._settings.max_explain_rows,
+        )
 
     def validate(
-        self, candidate: SQLCandidate, schema: SchemaSnapshot, auth: AuthContext
+        self,
+        candidate: SQLCandidate,
+        schema: SchemaSnapshot,
+        auth: AuthContext,
+        *,
+        knowledge: KnowledgeContext | None = None,
+        question: str | None = None,
     ) -> ValidationReport:
-        checks = self._run(candidate, schema, auth)
+        checks = self._run(candidate, schema, auth, knowledge=knowledge, question=question)
         return ValidationReport(candidate=candidate, checks=tuple(checks))
 
     # ------------------------------------------------------------------ #
 
-    def _run(self, candidate: SQLCandidate, schema: SchemaSnapshot, auth: AuthContext) -> list[CheckResult]:
+    def _run(
+        self,
+        candidate: SQLCandidate,
+        schema: SchemaSnapshot,
+        auth: AuthContext,
+        *,
+        knowledge: KnowledgeContext | None = None,
+        question: str | None = None,
+    ) -> list[CheckResult]:
         sql = candidate.sql.strip()
         if not sql:
             return [_fail(CheckName.SYNTAX, Severity.REPAIRABLE, "Boş SQL üretildi.")]
@@ -81,16 +149,30 @@ class SQLValidator:
             return checks
         checks.append(self._check_injection(sql, tree))
 
-        # --- Schema & authorization ------------------------------------------
+        # --- Schema & authorization -----------------------------------------
         schema_check, auth_check = self._check_schema_and_auth(tree, schema, auth)
         checks += [schema_check, auth_check]
 
-        # --- Cost --------------------------------------------------------------
-        checks.append(self._check_cost(tree))
+        # --- Cost -----------------------------------------------------------
+        checks.append(check_ast_cost(tree, self._cost_thresholds))
 
-        # --- Not yet implemented (explicitly visible in reports) -------------
-        checks.append(_ok(CheckName.SEMANTIC, _NOT_YET))
-        checks.append(_ok(CheckName.BUSINESS_RULE, _NOT_YET))
+        # --- Semantic & business rules (only when schema & auth succeeded) --
+        if schema_check.passed and auth_check.passed:
+            checks.append(validate_semantics(tree))
+            checks.append(
+                validate_business_rules(
+                    tree,
+                    schema,
+                    knowledge=knowledge,
+                    question=question,
+                    rule_specs=self._business_rules,
+                )
+            )
+        else:
+            checks.append(_ok(CheckName.SEMANTIC, "Şema veya yetki doğrulaması geçemediği için atlandı."))
+            checks.append(
+                _ok(CheckName.BUSINESS_RULE, "Şema veya yetki doğrulaması geçemediği için atlandı.")
+            )
         return checks
 
     def _check_ast(self, tree: exp.Expression) -> CheckResult:
@@ -120,13 +202,23 @@ class SQLValidator:
         cte_names = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
 
         alias_to_table: dict[str, str] = {}
+        tvf_aliases: set[str] = set()
         real_tables: set[str] = set()
         for table in tree.find_all(exp.Table):
+            if not isinstance(table.this, (exp.Identifier, str)) and not table.name:
+                if table.alias:
+                    tvf_aliases.add(table.alias.lower())
+                continue
             name = table.name.lower()
             qualifier = (table.db or "").lower()
             if name in cte_names and not qualifier:
                 continue
-            if qualifier in _SYSTEM_SCHEMAS or name.startswith(_SYSTEM_PREFIXES) or name in _SYSTEM_SCHEMAS:
+            if (
+                qualifier in _SYSTEM_SCHEMAS
+                or qualifier.startswith(_SYSTEM_PREFIXES)
+                or name.startswith(_SYSTEM_PREFIXES)
+                or name in _SYSTEM_SCHEMAS
+            ):
                 return (_ok(CheckName.SCHEMA), _fail(
                     CheckName.AUTHORIZATION, Severity.SECURITY, "Sistem kataloğuna erişim yasak.",
                 ))  # fmt: skip
@@ -165,7 +257,7 @@ class SQLValidator:
             cname = col.name.lower()
             qualifier = col.table.lower() if col.table else ""
             if qualifier:
-                if qualifier in cte_names:
+                if qualifier in cte_names or qualifier in tvf_aliases:
                     continue
                 tname = alias_to_table.get(qualifier)
                 if tname is None:
@@ -183,24 +275,9 @@ class SQLValidator:
                     CheckName.AUTHORIZATION, Severity.SECURITY, "Yetkisiz sütun erişimi.",
                 ))  # fmt: skip
             exists = any((info := schema.table(t)) is not None and info.column(cname) for t in candidates)
-            if not exists and not (not qualifier and (cname in select_aliases or cte_names)):
+            if not exists and not (not qualifier and (cname in select_aliases or cte_names or tvf_aliases)):
                 return (
                     _fail(CheckName.SCHEMA, Severity.REPAIRABLE, f"Sütun bulunamadı: {cname}"),
                     _ok(CheckName.AUTHORIZATION),
                 )
         return _ok(CheckName.SCHEMA), _ok(CheckName.AUTHORIZATION)
-
-    def _check_cost(self, tree: exp.Expression) -> CheckResult:
-        joins = list(tree.find_all(exp.Join))
-        if len(joins) > self._settings.max_joins:
-            return _fail(CheckName.COST, Severity.REPAIRABLE, f"Çok fazla JOIN ({len(joins)}).")
-        for join in joins:
-            on = join.args.get("on")
-            has_condition = bool(join.args.get("using")) or (
-                on is not None and not (isinstance(on, exp.Boolean) and on.this is True)
-            )
-            select = join.find_ancestor(exp.Select)
-            # Comma / CROSS joins are accepted only when a WHERE clause can restrict them.
-            if not has_condition and (select is None or not select.args.get("where")):
-                return _fail(CheckName.COST, Severity.REPAIRABLE, "Koşulsuz JOIN (kartezyen çarpım).")
-        return _ok(CheckName.COST)

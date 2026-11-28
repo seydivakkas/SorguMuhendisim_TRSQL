@@ -1,8 +1,8 @@
-# TRSQL Mimari Genel Bakış — v0.2 (Research Candidate)
+# TRSQL Mimari Genel Bakış — v1.0 (Modular Stack)
 
-> **Durum:** Araştırma adayı. AR-01–AR-08 araştırmaları ve prototip deneyleri
-> tamamlandıktan sonra AR-09'da kesinleşir. Kesinleşmemiş her karar bu
-> dokümanda "aday" olarak işaretlidir.
+> **Durum:** v1.0 modüler mimari tamamlandı. AR-01–AR-10 araştırma ve geliştirme
+> paketleri doğrultusunda L0–L9 katmanları, sözleşmeler ve kapılar (G1–G5)
+> uçtan uca uygulanmıştır.
 
 ## 1. Vizyon
 
@@ -26,8 +26,8 @@ iş kuralı tanımı, sayısal hesaplama, veritabanı erişimi) deterministik ka
 | Sürüm | Ad | Açıklama |
 |---|---|---|
 | v0.1 | Başlangıç mimarisi | Üç diyagramdaki klasik LLM tabanlı Text-to-SQL akışı (Gateway → Schema Analyzer → LLM → Validator → DB). |
-| **v0.2** | **Research Candidate** | Bu doküman. Bağımsız katmanlara ayrılmış L0–L9 yapısı. |
-| v1.0 | Nihai mimari | AR-09 sonunda deney sonuçlarına göre kesinleşir. |
+| v0.2 | Research Candidate | Bağımsız katmanlara ayrılmış L0–L9 iskeleti ve AR-01–AR-08 araştırma zemini. |
+| **v1.0** | **Modular Stack** | **Bu doküman.** AR-01–AR-10 bileşenleri (hibrit linking, BM25+Dense+RRF RAG, semantik KPI şablonları, `ComplexityRouter` + oylama, 8 aşamalı L6 doğrulama, PostgreSQL/SQLite, FastAPI + MCP, OpenTelemetry köprüsü, L0 React arayüzü) tamamlandı. |
 
 ### Referans donanım
 
@@ -206,10 +206,10 @@ yanlış veriyi hesaplayabilir ya da kullanıcının yetkisini aşabilir.
 | Syntax Validation | SQL yazımı doğru mu? | REPAIRABLE | ✅ uygulandı |
 | AST Validation | Sorgunun yapısı izinli mi? (yalnız SELECT, DDL/DML yok) | SECURITY | ✅ uygulandı |
 | Schema Validation | Tablolar ve sütunlar gerçekten var mı? | REPAIRABLE | ✅ uygulandı |
-| Semantic Validation | Kullanıcının istediği işlem yapılıyor mu? | REPAIRABLE | ⏳ AR-07 |
+| Semantic Validation | Kullanıcının istediği işlem yapılıyor mu? | REPAIRABLE | ✅ uygulandı |
 | Authorization | Kullanıcı bu verilere erişebilir mi? | SECURITY | ✅ uygulandı |
-| Business Rule Validation | Kurum kuralları uygulanmış mı? | REPAIRABLE | ⏳ AR-07 |
-| Cost Validation | Sorgu aşırı kaynak tüketir mi? (JOIN sayısı, kartezyen) | REPAIRABLE | ✅ temel |
+| Business Rule Validation | Kurum kuralları uygulanmış mı? | REPAIRABLE | ✅ uygulandı |
+| Cost Validation | Sorgu aşırı kaynak tüketir mi? (JOIN sayısı, kartezyen, EXPLAIN) | REPAIRABLE | ✅ uygulandı |
 | Injection Protection | Zararlı girdi/komut var mı? (çoklu ifade, yasaklı fonksiyon) | SECURITY | ✅ uygulandı |
 
 SQLGlot AST ve dialect analizi için kullanılır, **ancak tek başına güvenlik garantisi
@@ -304,29 +304,25 @@ Ayrıntılar: [modül haritası](module-map.md) · [veri sözleşmeleri](data-co
 - Multi-stage SQL Verification
 - Scientific Benchmark & Evaluation
 
-## 7. Teknoloji yığını (adaylar)
+## 7. Teknoloji yığını (uygulanan v1.0 bileşenleri)
 
-| Alan | Teknoloji adayı | Karar paketi |
+| Alan | Uygulanan teknoloji / modül | Paket |
 |---|---|---|
-| Backend | Python + FastAPI | — (iskelette kullanılıyor) |
-| Frontend | React + TypeScript | AR-10 |
-| Veri sözleşmeleri | Pydantic v2 | — (iskelette kullanılıyor) |
-| Veritabanı erişimi | SQLAlchemy / doğrudan sürücü | AR-07 |
-| Kurumsal veritabanı | PostgreSQL | AR-07 |
-| Yerel test veritabanı | SQLite | — (iskelette kullanılıyor) |
-| Yerel LLM inference | llama.cpp / ONNX Runtime | AR-05 |
-| Quantization | GGUF 4-bit | AR-05 |
-| Türkçe NLP | Zemberek, kural tabanlı NLP | AR-03 |
-| Schema Graph | NetworkX (şimdilik saf Python) | AR-03 |
-| SQL AST | SQLGlot | — (iskelette kullanılıyor) |
-| Vektör arama | FAISS (BGE-M3, CPU) | AR-04 |
-| Kelime tabanlı arama | BM25 | AR-04 |
-| Retrieval Fusion | RRF | AR-04 |
-| Fine-tuning | LoRA / QLoRA | AR-06 |
-| Test altyapısı | Pytest | — (iskelette kullanılıyor) |
-| Benchmark | Spider, BIRD, TURSpider, BIRDTurk (yalnız değerlendirme) | AR-08 |
-| Observability | OpenTelemetry | AR-08 |
-| Görselleştirme | Apache ECharts | AR-10 |
-
-Bunlar kesinleşmiş kararlar değildir; ilgili AR paketinde ölçülerek karara bağlanır
-(ADR-0010).
+| Backend | Python ≥ 3.11 + FastAPI + çevrimdışı MCP adaptörü | AR-07, AR-10 |
+| Frontend | React + TypeScript + Vite (`frontend/`) | AR-10 |
+| Veri sözleşmeleri | Pydantic v2 (`backend/core/contracts.py`) | F0 |
+| Veritabanı erişimi | `DatabaseAdapter` portu (`SQLiteAdapter`, `PostgresAdapter`) | AR-07 |
+| Kurumsal veritabanı | PostgreSQL (salt okunur rol + RLS + `statement_timeout`) | AR-07 |
+| Yerel test veritabanı | SQLite (`mode=ro`, `query_only`, authorizer) | — |
+| Yerel LLM inference | `LlamaCppAdapter` (GGUF + KV cache / VRAM bütçesi) + `FakeModelAdapter` | AR-02, AR-05 |
+| Adaptif yönlendirme | `ComplexityRouter` (`DIRECT` / `THINKING`) + tutarlılık oylaması | AR-05 |
+| Türkçe NLP | Morfoloji, normalizasyon, zaman çözümleme, belirsizlik + Zemberek kancası | AR-03 |
+| Schema Graph & Linking | `SchemaGraph` (Steiner JOIN) + `HybridSchemaLinker` (çift yönlü) | AR-03 |
+| SQL AST | SQLGlot (8 aşamalı doğrulama + `PolicyEngine`) | AR-07 |
+| Vektör arama | `DenseRetriever` (FAISS/CPU opsiyonel + `DeterministicHashEmbedder` / BGE-M3) | AR-04 |
+| Kelime & değer arama | `BM25Retriever` + `ValueLinker` (MinHash-LSH + Levenshtein) | AR-04 |
+| Retrieval Fusion | Ağırlıklı RRF (`HybridKnowledgeRetriever`) + KPI şablonları (`SemanticLayer`) | AR-04 |
+| Sentetik veri & eğitim | `synthetic_data/` kurumsal veri üreticisi + benchmark alt yapısı | AR-06 |
+| Test altyapısı | Pytest (`unit`, `security`, `integration`, `architecture`) + `mypy --strict` + `ruff` | — |
+| Benchmark & Observability | `benchmarks/` koşucuları + `MetricsCollector` (opsiyonel OpenTelemetry köprüsü) | AR-08 |
+| Dağıtım | `deployment/` (Docker Compose + model doğrulama + kurulum betikleri) | AR-10 |

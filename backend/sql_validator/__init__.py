@@ -13,6 +13,17 @@ guarantee on its own: the database layer still enforces read-only roles,
 timeouts and row limits (defense in depth, see docs/security).
 """
 
+from backend.sql_validator.business_rules import BusinessRuleSpec, validate_business_rules
+from backend.sql_validator.cost import CostThresholds, check_ast_cost, evaluate_explain_plan
+from backend.sql_validator.semantic import validate_semantics
 from backend.sql_validator.validator import SQLValidator
 
-__all__ = ["SQLValidator"]
+__all__ = [
+    "BusinessRuleSpec",
+    "CostThresholds",
+    "SQLValidator",
+    "check_ast_cost",
+    "evaluate_explain_plan",
+    "validate_business_rules",
+    "validate_semantics",
+]

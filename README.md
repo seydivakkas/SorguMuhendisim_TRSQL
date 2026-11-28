@@ -9,6 +9,7 @@
 
 ![status](https://img.shields.io/badge/mimari-v0.2%20Research%20Candidate-orange)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
+![license](https://img.shields.io/badge/license-All%20Rights%20Reserved-red?style=flat-square)
 
 TRSQL yalnızca Türkçe metni SQL'e çeviren bir uygulama değildir. Yapay zekâ modeli sistemin
 tamamı değil, **değiştirilebilir bir bileşenidir**; yetkilendirme, iş kuralları, sayısal

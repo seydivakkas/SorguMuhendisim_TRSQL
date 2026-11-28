@@ -58,3 +58,11 @@ def test_timeout(adapter: SQLiteAdapter) -> None:
     slow = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT COUNT(*) FROM c"
     with pytest.raises(ExecutionError):
         adapter.execute(forged(slow, timeout_ms=200))
+
+
+def test_adapter_refuses_stacked_statements(adapter: SQLiteAdapter, db_path: Path) -> None:
+    with pytest.raises(ExecutionError):
+        adapter.execute(forged("SELECT 1; DROP TABLE sales"))
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM sales").fetchone()[0] == 8
+    conn.close()

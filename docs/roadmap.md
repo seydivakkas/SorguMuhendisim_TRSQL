@@ -24,20 +24,20 @@ AR-10          →  atomik görevler, agent paketleri, veri sözleşmeleri,
 | **AR-09** | Nihai mimari kararları | Hangi adaylar kalıcı? | v1.0 mimari dokümanı, karar ADR'leri | D8 |
 | **AR-10** | Geliştirme ve entegrasyon | Ürünleştirme | Frontend (L0), dağıtım, atomik görev listesi, agent paketleri, test registry, entegrasyon gate'leri | — |
 
-## İskeletin bugünkü durumu (v0.2.0)
+## Güncel durum (v1.0.0 — AR-01–AR-10)
 
-| Katman | Durum |
+| Katman / Alan | Durum |
 |---|---|
-| L1 | Kimlik doğrulama: yalnız geliştirme sağlayıcısı. Şema kapsamlama: ✅ |
-| L2 | Kural tabanlı temel ayrıştırıcı ✅ (Zemberek: AR-03) |
-| L3 | Sözlük tabanlı linker + BFS/Steiner JOIN ✅ (hibrit: AR-03) |
-| L4 | Anahtar kelime retriever + semantik katman ✅ (BM25/FAISS/RRF: AR-04) |
-| L5 | Planner, prompt builder, `ModelAdapter`, `FakeModelAdapter` ✅; `LlamaCppAdapter`: AR-05 |
-| L6 | Syntax, AST, Schema, Authorization, Injection, Cost ✅; Semantic, Business Rule: AR-07 |
-| L7 | SQLite salt okunur adaptör ✅; PostgreSQL: AR-07 |
-| L8 | Deterministik Türkçe özet + grafik önerisi ✅ |
-| L9 | Audit + maskeleme ✅; metrik dışa aktarımı: AR-08 |
-| L0 | Yok (AR-10) |
+| L1 (`api`, `auth`) | ✅ Bearer auth, RBAC şema kapsamlama, kayan pencere rate limit (`429`), boyut kontrolü (`413`), tenant/bağlantı sahipliği (`403`), `/v1/plan` HITL önizleme, çevrimdışı `TRSQLMCPServer` |
+| L2 (`turkish_nlp`) | ✅ Morfolojik çözümleme, ASCII→Türkçe normalizasyon, eş anlamlılar, göreli zaman çözümleme, belirsizlik tespiti, opsiyonel Zemberek kancası |
+| L3 (`schema_linking`, `schema_intelligence`) | ✅ `SchemaGraph` Steiner JOIN onarımı + `HybridSchemaLinker` (sözlük + morfoloji + bulanık eşleşme + gömme + çift yönlü doğrulama + token bütçesi) |
+| L4 (`knowledge_base`, `rag`, `semantic_layer`) | ✅ `BM25Retriever` + `DenseRetriever` + `HybridKnowledgeRetriever` (RRF) + `ValueLinker` (MinHash-LSH) + `SemanticLayer` deterministik KPI şablonları |
+| L5 (`query_planner`, `prompt_engine`, `model_engine`, `sql_generator`, `orchestration`) | ✅ `M-Schema` / `DDL` / `sql-gen/v1` şablonları, GBNF kısıtlı üretim, `LlamaCppAdapter` + `FakeModelAdapter`, `ComplexityRouter` (`DIRECT`/`THINKING`), N-aday tutarlılık oylaması (`build_hybrid_pipeline`) |
+| L6 (`sql_validator`, `policy_engine`) | ✅ 8 aşamalı doğrulama (Syntax, AST, Schema, Semantic, Authorization, Business Rule, Cost/EXPLAIN, Injection) + `ApprovedQuery` zorunluluğu |
+| L7 (`execution_engine`, `database_adapters`) | ✅ Salt okunur `SQLiteAdapter` + `PostgresAdapter` (RLS, `statement_timeout`, satır sınırı) |
+| L8 (`result_engine`) | ✅ Deterministik Türkçe sayı/özet biçimlendirme + grafik önerisi |
+| L9 (`observability`, `benchmarks`) | ✅ KVKK maskelemeli JSONL audit izi, `MetricsCollector` (aşama gecikme/tekrar/güvenlik sayaçları + korumalı OpenTelemetry köprüsü), `benchmarks/` koşucuları |
+| L0 & Dağıtım (`frontend/`, `deployment/`, `synthetic_data/`) | ✅ React + TypeScript L0 arayüzü (HITL plan önizleme dahil), Docker Compose on-prem dağıtım paketi, sentetik kurumsal veri üreticisi |
 
 ## Agent ile çalışma
 
