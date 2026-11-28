@@ -8,8 +8,9 @@ from backend.core.contracts import GenerationParams, ModelInfo, PromptBundle
 class FakeModelAdapter:
     """Deterministic adapter for tests: returns scripted responses in order.
 
-    The last response repeats once the script is exhausted. ``prompts``
-    records every prompt received so tests can assert on feedback.
+    The last response repeats once the script is exhausted. ``prompts`` and
+    ``params`` record every request received so tests can assert on feedback
+    and decoding parameters.
     """
 
     def __init__(self, responses: Sequence[str], model_id: str = "fake-model") -> None:
@@ -18,6 +19,7 @@ class FakeModelAdapter:
         self._responses = list(responses)
         self._info = ModelInfo(model_id=model_id, context_length=4096)
         self.prompts: list[PromptBundle] = []
+        self.params: list[GenerationParams] = []
 
     @property
     def info(self) -> ModelInfo:
@@ -26,4 +28,5 @@ class FakeModelAdapter:
     def generate(self, prompt: PromptBundle, params: GenerationParams) -> str:
         idx = min(len(self.prompts), len(self._responses) - 1)
         self.prompts.append(prompt)
+        self.params.append(params)
         return self._responses[idx]

@@ -45,6 +45,17 @@ class ModelAdapter(Protocol):
 
 
 @runtime_checkable
+class EmbeddingAdapter(Protocol):
+    """Local text embedding backend (e.g., BGE-M3 via llama.cpp on CPU).
+
+    Allows ``rag`` and ``schema_linking`` to compute dense embeddings without
+    importing ``llama_cpp`` or ``torch`` directly (ADR-0001 / ADR-0002).
+    """
+
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+@runtime_checkable
 class DatabaseAdapter(Protocol):
     """Dialect-specific database access. Only ``execution_engine`` calls
     :meth:`execute`; introspection runs when a connection is registered."""

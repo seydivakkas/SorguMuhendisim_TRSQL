@@ -244,6 +244,19 @@ class ModelInfo(Contract):
     quantization: str | None = None
     context_length: int = Field(gt=0)
     vram_mb_estimate: int | None = None
+    sha256: str | None = None
+
+
+class ReasoningMode(StrEnum):
+    DIRECT = "direct"
+    THINKING = "thinking"
+
+
+class RoutingDecision(Contract):
+    mode: ReasoningMode
+    num_candidates: int = Field(ge=1)
+    complexity_score: float = Field(ge=0.0, le=1.0)
+    reasons: tuple[str, ...] = ()
 
 
 class SQLCandidate(Contract):
@@ -252,6 +265,7 @@ class SQLCandidate(Contract):
     model_id: str
     attempt: int = Field(ge=1)
     latency_ms: float = Field(default=0.0, ge=0.0)
+    reasoning: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -321,6 +335,9 @@ class ApprovedQuery(Contract):
     report: ValidationReport
     max_rows: int = Field(gt=0)
     timeout_ms: int = Field(gt=0)
+    # Identity the query was approved for. Adapters use it for database-level
+    # defense in depth (SQLite authorizer allow-list, PostgreSQL RLS context).
+    auth: AuthContext | None = None
 
     @model_validator(mode="after")
     def _must_be_approved(self) -> ApprovedQuery:

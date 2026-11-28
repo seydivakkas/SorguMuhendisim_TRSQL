@@ -12,9 +12,36 @@ max_rows = 1000
 
 [validation]
 max_joins = 6
+max_explain_cost = 1000000.0
+max_explain_rows = 10000000
 
 [model]
 adapter = "llama_cpp"     # "fake" only in tests
 model_path_env = "TRSQL_MODEL_PATH"
+embedding_model_path_env = "TRSQL_EMBEDDING_MODEL_PATH"
 context_length = 4096
 vram_budget_mb = 6800     # RTX 4070 Laptop (8 GB) minus display/runtime overhead
+kv_cache_type = "q8_0"
+flash_attn = true
+n_gpu_layers = -1
+seed = 42
+
+[rag]
+bm25_weight = 0.5
+dense_weight = 0.5
+rrf_k = 60
+top_k_rules = 5
+top_k_examples = 3
+enable_schema_rag = true
+enable_example_rag = true
+enable_rule_rag = true
+enable_value_linking = true
+
+[routing]
+enabled = true
+thinking_threshold = 0.5
+vote_candidates = 4
+vote_threshold = 0.7
+
+[auth]
+rate_limit_per_minute = 60

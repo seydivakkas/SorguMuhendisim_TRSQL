@@ -1,0 +1,46 @@
+# D0 Baseline Experiment Template (evaluation-plan §6)
+# Kopyalayıp experiments/YYYY-AA-GG-d0-<model>/config.toml olarak düzenleyin.
+
+[experiment]
+name = "d0-baseline-template"
+stage = "D0"
+dataset = "turspider"
+dataset_path = "datasets/external/turspider_dev.json"
+split = "dev"
+allow_dirty = false
+seed = 42
+template_id = "ddl_v1"
+quantization = "Q4_K_M"
+description = "D0 ham LLM + klasik DDL şeması taban çizgisi şablonu"
+
+[database]
+dialect = "sqlite"
+# Tekil DB için `path`, çoklu DB (TURSpider/BIRDTurk) için `db_dir` kullanın:
+# path = "tests/fixtures/demo.sqlite"
+db_dir = "datasets/external/databases"
+
+[auth]
+user_id = "eval-runner"
+tenant_id = "benchmark"
+roles = ["analyst"]
+denied_columns = []
+max_rows = 1000
+
+[settings]
+offline = true
+
+[settings.retry]
+max_attempts = 3
+
+[settings.execution]
+timeout_ms = 5000
+max_rows = 1000
+
+[settings.validation]
+max_joins = 6
+
+[settings.model]
+adapter = "llama_cpp"
+model_path_env = "TRSQL_MODEL_PATH"
+context_length = 4096
+vram_budget_mb = 6800
