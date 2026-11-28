@@ -15,10 +15,10 @@ from backend.api.rate_limit import (
     check_connection_ownership,
     validate_request_size,
 )
-from backend.auth import load_auth_provider
+from backend.auth import OIDCAuthProvider, OIDCConfig, load_auth_provider, load_role_policies
 from backend.core.config import AuthSettings, load_settings
 from backend.core.contracts import AuthContext, PipelineOutcome, QueryRequest
-from backend.core.errors import AuthorizationError
+from backend.core.errors import AuthorizationError, ConfigError
 from backend.observability import MetricsCollector
 from backend.orchestration import Pipeline, PlanPreview, build_pipeline_from_env
 
@@ -164,9 +164,24 @@ def create_default_app() -> FastAPI:
     settings = load_settings(config_path)
     metrics = MetricsCollector()
     pipeline = build_pipeline_from_env(settings, metrics=metrics)
-    tokens_path = os.environ.get("TRSQL_TOKENS_FILE", "").strip() or None
     policies_dir = os.environ.get("TRSQL_POLICIES_DIR", "").strip() or None
-    auth_provider = load_auth_provider(tokens_path=tokens_path, policies_dir=policies_dir)
+
+    oidc_jwks = os.environ.get("TRSQL_OIDC_JWKS", "").strip()
+    auth_provider: AuthProvider
+    if oidc_jwks:
+        issuer = os.environ.get("TRSQL_OIDC_ISSUER", "").strip()
+        audience = os.environ.get("TRSQL_OIDC_AUDIENCE", "").strip()
+        if not issuer or not audience:
+            raise ConfigError("OIDC için TRSQL_OIDC_ISSUER ve TRSQL_OIDC_AUDIENCE gereklidir.")
+        policies = load_role_policies(policies_dir or "security_policies")
+        auth_provider = OIDCAuthProvider(
+            OIDCConfig(issuer=issuer, audience=audience, jwks_path=oidc_jwks),
+            policies,
+        )
+    else:
+        tokens_path = os.environ.get("TRSQL_TOKENS_FILE", "").strip() or None
+        auth_provider = load_auth_provider(tokens_path=tokens_path, policies_dir=policies_dir)
+
     return create_app(
         pipeline,
         auth_provider,

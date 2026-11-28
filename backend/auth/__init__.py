@@ -15,6 +15,7 @@ unauthorized table or column exists.
 
 from __future__ import annotations
 
+from backend.auth.oidc import OIDCAuthProvider, OIDCConfig
 from backend.auth.policies import (
     DEFAULT_PII_DENIED_COLUMNS,
     HashedTokenAuthProvider,
@@ -31,6 +32,8 @@ from backend.auth.scoping import scope_schema
 __all__ = [
     "DEFAULT_PII_DENIED_COLUMNS",
     "HashedTokenAuthProvider",
+    "OIDCAuthProvider",
+    "OIDCConfig",
     "RolePolicy",
     "StaticAuthProvider",
     "TokenRecord",

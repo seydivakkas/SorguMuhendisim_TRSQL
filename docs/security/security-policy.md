@@ -37,6 +37,7 @@ giden her yol deterministik, denetlenebilir ve modelden bağımsız kontrollerde
 
 ### L1 — Gateway
 - Kimliği doğrulanmamış istek hiçbir katmana ulaşmaz (401).
+- Üretim ortamında [OIDC / JWT](../../backend/auth/oidc.py) doğrulaması yalnızca yerel JWKS dosyasıyla (ağ çağrısı yok, `alg=none` yasak) `iss`, `aud`, `exp`, `nbf` denetimi yapar (ADR-0011).
 - `AuthContext.allowed_tables` boşsa kullanıcı hiçbir şey göremez (varsayılan: reddet).
 - Rate limiting kullanıcı ve kiracı bazında (AR-07).
 - Şema kapsamlama her istekte, L2'den önce.

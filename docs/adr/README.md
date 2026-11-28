@@ -15,5 +15,6 @@ silinmez; yeni bir ADR yazılır ve eskisi `Yerini aldı: ADR-XXXX` olarak işar
 | [0008](0008-deterministic-numbers-in-results.md) | Sonuç sayıları deterministik; model sayı üretmez | Kabul edildi |
 | [0009](0009-dataset-licensing.md) | Veri kümesi lisansları; BIRDTurk yalnız değerlendirme | Kabul edildi |
 | [0010](0010-technology-candidates-decided-by-benchmarks.md) | Teknoloji yığını aday; karar AR-09'da ölçümle | Kabul edildi |
+| [0011](0011-offline-oidc-jwt-auth.md) | Çevrimdışı OIDC / JWT doğrulaması (`PyJWT[crypto]`) | Kabul edildi |
 
 Yeni ADR için [şablon](template.md) kullanılır. ADR'ler Türkçe yazılır.

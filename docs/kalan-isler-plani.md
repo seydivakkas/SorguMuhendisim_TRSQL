@@ -639,7 +639,7 @@ ayrımını ekle (E-15). Tamamlanan görevleri bu dosyada `[x]` yap.
 - [ ] T-16 D7 kararı
 - [ ] T-17 D8 + ana rapor
 - [ ] T-18 AR-09 ADR'leri
-- [ ] T-19 OIDC/LDAP
+- [x] T-19 OIDC/LDAP
 - [ ] T-20 Çevrimdışı e2e + kabul senaryoları
 - [ ] T-21 Doküman güncellemesi
 
