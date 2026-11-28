@@ -1,0 +1,20 @@
+# TRSQL default settings (backend/core/config.py: Settings).
+# No secrets here. Paths and DSNs come from environment variables.
+
+offline = true            # ADR-0002: no outbound network at runtime
+
+[retry]
+max_attempts = 3          # ADR-0006: total generation attempts incl. the first
+
+[execution]
+timeout_ms = 5000
+max_rows = 1000
+
+[validation]
+max_joins = 6
+
+[model]
+adapter = "llama_cpp"     # "fake" only in tests
+model_path_env = "TRSQL_MODEL_PATH"
+context_length = 4096
+vram_budget_mb = 6800     # RTX 4070 Laptop (8 GB) minus display/runtime overhead
